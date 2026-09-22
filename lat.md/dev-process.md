@@ -134,13 +134,15 @@ The legacy production project and domain remain outside this deployment path unt
 
 All directory walking goes through [[packages/core/src/walk.ts#walkEntries]], the single entry point with nested `.gitignore` support that excludes `.git/`, dotfiles, dot-directories, and symlinks before recursive traversal.
 
+It also takes the project config’s [[vault#Config file|exclude list]], which prunes a named subdirectory and its whole subtree regardless of Git state.
+
 `walkEntries()` retains `ignore-walk`'s nested ignore-rule contexts but owns traversal itself. A bounded queue runs one asynchronous directory job per available CPU; each job uses `readdir` directory entries instead of per-entry `lstat` calls, filters files with file semantics only, and submits visible child directories back to the queue. Results are sorted after reduction, not cached, so long-lived processes such as the MCP server always observe the current filesystem.
 
-Nearest-project discovery and Markdown file listing live in parser-free [[packages/core/src/project-discovery.ts]]. Finding `lat.md/` walks ancestor paths without loading the directory walker; listing Markdown files dynamically loads `walkEntries()` only when enumeration is requested.
+Nearest-project discovery and Markdown file listing live in parser-free [[packages/core/src/project-discovery.ts]]. Finding the vault (see [[vault#Discovery]]) walks ancestor paths without loading the directory walker; listing Markdown files dynamically loads `walkEntries()` only when enumeration is requested.
 
 Pre-traversal filtering prevents transient files under dot-directories and dependency trees under `node_modules/` from racing or polluting non-Git project scans.
 
-[[packages/core/src/code-refs.ts#walkFiles]] calls `walkEntries()` then additionally skips `.md` files, `lat.md/`, `.claude/`, and sub-projects (directories containing their own `lat.md/`).
+[[packages/core/src/code-refs.ts#walkFiles]] calls `walkEntries()` then additionally skips `.md` files, the vault, `.claude/`, and sub-projects (directories containing their own vault).
 
 [[packages/core/src/code-refs.ts#createCodeReferenceDiscovery]] exposes separate lazy operations for scanning `@lat:` comments and listing the supported source-file scope. The project-scoped object coalesces repeated calls and shares ripgrep exclusion discovery; [[packages/core/src/code-refs.ts#scanCodeRefs]] and [[packages/core/src/code-refs.ts#discoverSourceFiles]] are focused one-shot APIs for callers that need only one result.
 
@@ -150,7 +152,7 @@ Outside Git, both operations first try `rg` (ripgrep), falling back to pure Type
 
 The TS fallback uses `walkFiles` for discovery and exclusion filtering, then reads and scans supported files through a bounded async pool with one slot per CPU available to the process. Both paths sort file and reference results by source position, so scheduling cannot reorder references or read diagnostics. `CodeRef.file` is always stored as a projectRoot-relative path; consumers convert to cwd-relative only at display time. Setting `_LAT_DISABLE_RG=1` forces the TS fallback; used in tests to cover both paths.
 
-[[packages/core/src/cli/check.ts#checkIndex]] calls `walkEntries()` on the `lat.md/` directory itself to discover visible entries for index validation.
+[[packages/core/src/cli/check.ts#checkIndex]] calls `walkEntries()` on the vault directory itself to discover visible entries for index validation.
 
 ## Formatting
 

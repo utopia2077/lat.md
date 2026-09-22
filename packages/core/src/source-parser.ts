@@ -1,4 +1,5 @@
 import { repositoryFilePath } from './repository-path.js';
+import { latticeDirName } from './project-config.js';
 import { readFile } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -1649,7 +1650,8 @@ export async function resolveSourceSymbol(
   const safePath = await repositoryFilePath(projectRoot, filePath);
   if (!safePath) return { found: false, symbols: [] };
   const absPath = join(projectRoot, filePath);
-  const latDir = options.latDir ?? join(projectRoot, 'lat.md');
+  const latDir =
+    options.latDir ?? join(projectRoot, latticeDirName(projectRoot));
   const cacheKey = `${latDir}\0${absPath}`;
   const runtime = options.runtime ?? defaultSourceParserRuntime;
   let cachedPromise = runtime.symbols.get(cacheKey);

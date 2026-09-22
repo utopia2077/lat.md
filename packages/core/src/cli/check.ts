@@ -16,6 +16,7 @@ import { TimingProfiler, type Profiler } from '../profiler.js';
 import type { CmdContext, CmdResult, Styler } from '../context.js';
 import { INIT_VERSION, readInitVersion } from '../init-version.js';
 import { CheckRunContext } from './check-context.js';
+import { latticeIndexFileName } from '../project-discovery.js';
 import { parseLocalMarkdownTarget } from '../markdown-validation.js';
 
 export type CheckError = {
@@ -537,10 +538,12 @@ export async function checkIndex(
 
   for (const dir of dirs) {
     // Determine the index file name and its expected path.
-    // The index file shares the directory's name — for `lat.md/` it's `lat.md`,
-    // for a subdir `api/` it's `api.md`.
-    const dirName = dir === '' ? basename(latticeDir) : dir.split('/').pop()!;
-    const indexFileName = dirName.endsWith('.md') ? dirName : dirName + '.md';
+    // The index file shares the directory's name — for the vault root `lat.md/`
+    // it's `lat.md`, for a subdir `api/` it's `api.md`. The root case is shared
+    // with external-source config, `lat paths`, and view diagnostics.
+    const indexFileName = latticeIndexFileName(
+      dir === '' ? latticeDir : join(latticeDir, dir),
+    );
     const indexRelPath = dir === '' ? indexFileName : dir + '/' + indexFileName;
 
     // Get the immediate children of this directory

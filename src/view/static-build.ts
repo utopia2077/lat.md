@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url';
 import type { CmdContext } from '@lat.md/core/context';
 import { isDocumentPath } from '@lat.md/core/document-formats';
 import type { ExternalResolver } from '@lat.md/core/external-sources';
+import { latticeDirRel } from '@lat.md/core/project-discovery';
 import type {
   ViewDocument,
   ViewExternalDocument,
@@ -648,12 +649,20 @@ export async function removeViewBuildStaging(
   });
 }
 
+/**
+ * Bridge vault-relative document paths to project-relative section-id paths.
+ * `vaultRel` must match the prefix section ids carry — the same
+ * `relative(projectRoot, latDir)` that derives them — or every internal wiki
+ * link in the exported site silently degrades to an unrouted document.
+ */
 function sectionDocumentPaths(
   documents: ReadonlyMap<string, ViewDocument>,
+  vaultRel: string,
 ): Map<string, string> {
   const result = new Map<string, string>();
+  const prefix = vaultRel ? `${vaultRel}/` : '';
   for (const path of documents.keys()) {
-    result.set(`lat.md/${path.slice(0, -'.md'.length)}`, path);
+    result.set(`${prefix}${path.slice(0, -'.md'.length)}`, path);
   }
   return result;
 }
@@ -777,7 +786,10 @@ export async function buildStaticView(
       watch: false,
       externalIgnoreLocal: true,
       externalCa: options.externalCa,
-      publishable: await createPublicationPolicy(ctx.projectRoot),
+      publishable: await createPublicationPolicy(
+        ctx.projectRoot,
+        latticeDirRel(ctx.latDir, ctx.projectRoot),
+      ),
     });
     const clientHtml = await readFile(join(clientDir, 'index.html'), 'utf8');
     const payloadDir = staticViewPayloadDir(stagingDir, basePath);
@@ -822,7 +834,10 @@ export async function buildStaticView(
       );
     }
     const documentPaths = new Set(documents.keys());
-    const sectionPaths = sectionDocumentPaths(documents);
+    const sectionPaths = sectionDocumentPaths(
+      documents,
+      latticeDirRel(ctx.latDir, ctx.projectRoot),
+    );
 
     const graph = store.getGraph();
     for (const node of graph.nodes) {

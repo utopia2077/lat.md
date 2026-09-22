@@ -117,7 +117,11 @@ describe('directory index navigation', () => {
       '': ['zeta', 'docs', 'alpha'],
       docs: ['setup', 'api'],
     });
-    expect(paths(buildFileTree(initial.files, initial.directoryOrder))).toEqual(
+    expect(
+      paths(
+        buildFileTree(initial.files, initial.directoryOrder, initial.entry),
+      ),
+    ).toEqual(
       [
         'lat.md',
         'zeta.md',
@@ -179,9 +183,9 @@ describe('directory index navigation', () => {
       'docs/setup.md',
       'zeta.md',
     ];
-    expect(paths(buildFileTree(updated.files, updated.directoryOrder))).toEqual(
-      expected,
-    );
+    expect(
+      paths(buildFileTree(updated.files, updated.directoryOrder, updated.entry)),
+    ).toEqual(expected);
 
     const clientDir = join(projectRoot, 'client');
     mkdirSync(clientDir);
@@ -200,7 +204,13 @@ describe('directory index navigation', () => {
     ) as ViewStaticManifest;
     expect(manifest.index.directoryOrder).toEqual(updated.directoryOrder);
     expect(
-      paths(buildFileTree(manifest.index.files, manifest.index.directoryOrder)),
+      paths(
+        buildFileTree(
+          manifest.index.files,
+          manifest.index.directoryOrder,
+          manifest.index.entry,
+        ),
+      ),
     ).toEqual(expected);
   });
 

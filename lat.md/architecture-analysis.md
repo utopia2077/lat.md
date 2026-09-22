@@ -32,12 +32,12 @@ Source analysis stays lazy: only a file named by a source-code wiki link is read
 
 ## Persistent cache
 
-Successful local Markdown, external document, and source analyses persist below `lat.md/.cache/parsed/` so later commands can reuse unchanged semantic facts without loading their parsers.
+Successful local Markdown, external document, and source analyses persist below `<vault>/.cache/parsed/` so later commands can reuse unchanged semantic facts without loading their parsers.
 
 Each local cache identity is the normalized project-relative full path. External documents and source code use `@external/<handle>/<path>` so different providers cannot collide. The first two lowercased characters of the short name supply a predictable shard directory, while a full-identity SHA-1 digest prevents collisions and a bounded readable suffix makes entries inspectable. Non-ASCII or punctuation shard characters become `_`.
 
 ```text
-lat.md/.cache/parsed/se/abcdef0123456789abcdef0123456789abcdef01_lat_md_guide_setup_md
+<vault>/.cache/parsed/se/abcdef0123456789abcdef0123456789abcdef01_lat_md_guide_setup_md
 ```
 
 The first line is `v<N>:<sha1>`, where `N` is [[packages/core/src/parser-cache.ts#PARSER_CACHE_VERSION]] and the hash covers the complete input content. The remaining bytes are the compact JSON serialization of a local Markdown analysis, external document index, or source symbol table.

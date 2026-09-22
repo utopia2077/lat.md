@@ -22,6 +22,7 @@ import type {
 } from './markdown-analysis-worker.js';
 import { walkEntries } from './walk.js';
 import { scanCodeRefs, type ScanResult } from './code-refs.js';
+import { latticeDirRel, latticeExcludePaths } from './project-discovery.js';
 import {
   SourceParserRuntime,
   type ResolveSourceSymbolOptions,
@@ -206,7 +207,7 @@ export async function analyzeMarkdownProject(
   projectRoot: string,
   options: AnalyzeMarkdownProjectOptions = {},
 ): Promise<MarkdownProjectAnalysis> {
-  const entries = await walkEntries(latDir);
+  const entries = await walkEntries(latDir, latticeExcludePaths(latDir));
   const markdownFiles = entries
     .filter((entry) => entry.endsWith('.md'))
     .sort()
@@ -350,7 +351,9 @@ export class MarkdownProjectSession {
   }
 
   codeRefs(): Promise<ScanResult> {
-    this.codeRefsPromise ??= scanCodeRefs(this.projectRoot);
+    this.codeRefsPromise ??= scanCodeRefs(this.projectRoot, undefined, {
+      latticeDirRel: latticeDirRel(this.latDir, this.projectRoot),
+    });
     return this.codeRefsPromise;
   }
 

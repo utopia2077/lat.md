@@ -43,8 +43,13 @@ export type {
 export {
   findLatticeDir,
   findProjectRoot,
+  latticeDirRel,
+  latticeIndexFileName,
+  latticePathPrefix,
   listLatticeFiles,
+  projectConfigError,
 } from './project-discovery.js';
+export { latticeDirName, readLatProjectConfig } from './project-config.js';
 
 export function parseFrontmatter(content: string): LatFrontmatter {
   const match = content.match(/^---\n([\s\S]*?)\n---/);

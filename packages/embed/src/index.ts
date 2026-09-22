@@ -26,10 +26,16 @@ export interface Embedder {
   /**
    * Embed texts. `onProgress(done, total)` fires as internal batches complete —
    * useful for a progress indicator on the (synchronous, chunked) local backend.
+   *
+   * `onNotice` reports out-of-band events that produce no batch progress, such
+   * as waiting out a provider rate limit. A caller that renders progress should
+   * forward it; otherwise the backend writes it to stderr so a long wait never
+   * looks like a hang.
    */
   embed(
     texts: string[],
     onProgress?: (done: number, total: number) => void,
+    onNotice?: (message: string) => void,
   ): Promise<number[][]>;
 }
 
@@ -58,11 +64,28 @@ export interface ModelManifest {
 export async function createEmbedder(cfg: {
   key?: string;
   model?: ModelManifest;
+  /** Explicit OpenAI-compatible endpoint; see {@link RemoteSelection}. */
+  baseUrl?: string;
+  /** Model id for `baseUrl`. */
+  modelId?: string;
+  /** Known vector width, e.g. parsed from the index's recorded model. */
+  dimensions?: number;
 }): Promise<Embedder> {
-  if (cfg.key) return createRemoteEmbedder(cfg.key);
+  if (cfg.key)
+    return createRemoteEmbedder(cfg.key, {
+      baseUrl: cfg.baseUrl,
+      model: cfg.modelId,
+      dimensions: cfg.dimensions,
+    });
   if (cfg.model) return createLocalEmbedder(cfg.model);
   throw new Error('createEmbedder requires either a `key` or a `model`.');
 }
 
-export { detectProvider, EmbeddingAuthError } from './remote.js';
-export type { RemoteProvider } from './remote.js';
+export {
+  detectProvider,
+  EmbeddingAuthError,
+  EmbeddingRateLimitError,
+  rateLimitPolicy,
+  retryAfterMs,
+} from './remote.js';
+export type { RemoteProvider, RemoteSelection } from './remote.js';

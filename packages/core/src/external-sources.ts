@@ -1,4 +1,5 @@
 import { assertCachePath, managedCacheRoot } from './cache-path.js';
+import { latticeIndexFileName } from './project-discovery.js';
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import {
@@ -479,7 +480,7 @@ export async function loadExternalSources(
   projectRoot = dirname(latDir),
   options: { ignoreLocal?: boolean } = {},
 ): Promise<ExternalSourcesSnapshot> {
-  const canonicalPath = join(latDir, 'lat.md');
+  const canonicalPath = join(latDir, latticeIndexFileName(latDir));
   const localPath = join(latDir, 'config.local.yaml');
   const errors: ExternalConfigError[] = [];
   const canonical = new Map<string, CanonicalExternalSource>();
@@ -1517,7 +1518,7 @@ export async function addCanonicalExternalSource(
     fetchUrl?: string;
   },
 ): Promise<CanonicalExternalSource> {
-  const path = join(latDir, 'lat.md');
+  const path = join(latDir, latticeIndexFileName(latDir));
   const content = await readFile(path, 'utf8');
   const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---(?:\r?\n|$)/);
   const document = parseDocument(match?.[1] ?? '');

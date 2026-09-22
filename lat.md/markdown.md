@@ -74,7 +74,7 @@ Those enrichments depend on live GitHub repository, account, permission, or issu
 
 Obsidian-style links: `[[target]]` or `[[target|alias]]`. Uses `|` as the alias divider.
 
-Targets are section ids — hierarchical paths like `lat.md/dev-process#Testing#Running Tests`. The vault root is the project directory (the parent of `lat.md/`), so all markdown section ids include the `lat.md/` prefix. Wiki links can also reference [[markdown#Wiki Links#Repository Path Links|repository paths]] and [[markdown#Wiki Links#Source Code Links|source symbols]].
+Targets are section ids — hierarchical paths like `lat.md/dev-process#Testing#Running Tests`. The vault root is the project directory (the vault directory’s parent), so markdown section ids include the vault directory’s name as their first segment — `lat.md/` by default, or whatever [[vault]] configures. Wiki links can also reference [[markdown#Wiki Links#Repository Path Links|repository paths]] and [[markdown#Wiki Links#Source Code Links|source symbols]].
 
 Validated by [[cli#check#md]].
 
@@ -92,7 +92,7 @@ Heading segments accept either their literal Obsidian form (`Some Section!`) or 
 
 ### Short Path Disambiguation
 
-Short refs are supported for markdown files inside `lat.md/` only. When a file stem is unique across the vault, it can be used without its directory prefix.
+Short refs are supported for markdown files inside the vault only. When a file stem is unique across the vault, it can be used without its directory prefix.
 
 For example, `[[setup#Install]]` resolves to `lat.md/guides/setup#Install` if `setup.md` only exists under `lat.md/guides/`.
 

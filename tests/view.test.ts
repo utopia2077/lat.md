@@ -2924,15 +2924,19 @@ describe('lat ui', () => {
 
   // @lat: [[lat.md/view/specs#View Tests#Builds a nested file tree]]
   it('builds a nested file tree', () => {
-    const tree = buildFileTree([
+    const tree = buildFileTree(
+      [
+        'lat.md',
+        'guides/setup.md',
+        'guides/guides.md',
+        'guides/api.md',
+        'api.md',
+        'chapter10.md',
+        'Chapter2.md',
+      ],
+      {},
       'lat.md',
-      'guides/setup.md',
-      'guides/guides.md',
-      'guides/api.md',
-      'api.md',
-      'chapter10.md',
-      'Chapter2.md',
-    ]);
+    );
 
     expect(tree).toEqual([
       { kind: 'file', name: 'lat.md', path: 'lat.md' },

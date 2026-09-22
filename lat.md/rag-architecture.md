@@ -85,6 +85,22 @@ The embedder contract exposes dimensions, model input limits, tokenizer identity
 
 [[packages/embed/src/remote.ts]] counts hosted inputs with `js-tiktoken`, batches OpenAI-compatible requests, and validates response ordering. [[tests/search#Hybrid Retrieval#Validates hosted input and response ordering]] uses mocked responses; it is not a live hosted relevance evaluation.
 
+## Custom endpoints
+
+Key-prefix detection cannot identify every gateway — SiliconFlow and others issue `sk-` keys that would otherwise be sent to OpenAI. An explicit `baseUrl` and `model` select any OpenAI-compatible endpoint instead.
+
+[[packages/core/src/config.ts#getRemoteSelection]] resolves the selection: `LAT_LLM_BASE_URL` and `LAT_LLM_MODEL` for one run or a CI job, then the durable per-repo preference. A `baseUrl` requires a model, and plain `http` is accepted only on loopback, where a local embedding server is reachable nowhere else.
+
+A custom model's vector width is unknown, so the backend probes it with one throwaway request — unless the width can be reused from the index's recorded model key, which is why `lat search` does not pay a probe per query. The endpoint is part of the embedder's tokenizer fingerprint, so pointing the same model name at a different gateway forces a reindex rather than mixing vectors from two services. [[tests/remote-embedder#Provider selection#Selects an explicit OpenAI-compatible endpoint]] covers selection and rejection.
+
+## Rate limits
+
+A provider that limits tokens per minute answers `429`; the backend waits and continues the same queue rather than failing the run.
+
+[[packages/embed/src/remote.ts#waitForRateLimit]] prefers the response's `Retry-After` (delta-seconds or HTTP-date) and otherwise waits 60 seconds, the usual reset window for a tokens-per-minute budget. The wait is bounded, and a server-supplied delay is additionally clamped so a mistaken header cannot stall a run. Each wait reports through the embedder's notice channel, which the reindex spinner renders — without it a long wait is indistinguishable from a hang.
+
+**Waiting cannot rescue a batch that exceeds the limit on its own.** When retries are exhausted the error names `LAT_EMBED_BATCH_TOKENS`, the bound that shrinks a batch; `LAT_EMBED_BATCH` caps its item count and `LAT_EMBED_RATE_LIMIT_RETRIES` adjusts the retry budget. [[tests/remote-embedder#Rate limiting#Waits out a 429 and continues the queue]] and [[tests/remote-embedder#Rate limiting#Fails with the batch escape hatch after exhausting retries]] cover both outcomes.
+
 ## Embedding reuse after edits
 
 Embedding reuse is keyed by the complete contextual input and embedding fingerprint. A small edit only needs vectors for inputs whose hashes are absent from the active index.

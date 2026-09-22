@@ -1,7 +1,10 @@
 import { execSync } from 'node:child_process';
 import { lstatSync, readFileSync } from 'node:fs';
 import { dirname, extname, join } from 'node:path';
-import { findLatticeDir } from '@lat.md/core/project-discovery';
+import {
+  findLatticeDir,
+  latticePathPrefix,
+} from '@lat.md/core/project-discovery';
 import { plainStyler, type CmdContext } from '@lat.md/core/context';
 import { expandPrompt } from '@lat.md/core/cli/expand';
 import { runSearch } from './search.js';
@@ -120,16 +123,20 @@ async function handleUserPromptSubmit(): Promise<void> {
 
   const parts: string[] = [];
 
+  // Resolved before the reminder so the injected text names the project's real
+  // vault directory instead of assuming `lat.md/`.
+  const latDir = findLatticeDir();
+  const vault = latDir ? latticePathPrefix(latDir) : 'lat.md/';
+
   parts.push(
     "Before starting work, run `lat search` with one or more queries describing the user's intent.",
     'ALWAYS do this, even when the task seems straightforward — search results may reveal critical design details, protocols, or constraints.',
     'Use `lat section` to read the full content of relevant matches.',
     'Do not read files, write code, or run commands until you have searched.',
     '',
-    'Remember: `lat.md/` must stay in sync with meaningful codebase state. If you change implemented behavior, architecture, or tests, update the relevant current-state sections and run `lat check` before finishing. Plans may be drafted in `lat.md/` alongside implementation, with the intent that by commit time they describe what was implemented. Otherwise, keep proposals, hypothetical designs, and future work outside `lat.md/` unless the user explicitly requests them there. Do not use `lat.md/` as a journal/changelog or add notes for insignificant details.',
+    `Remember: \`${vault}\` must stay in sync with meaningful codebase state. If you change implemented behavior, architecture, or tests, update the relevant current-state sections and run \`lat check\` before finishing. Plans may be drafted in \`${vault}\` alongside implementation, with the intent that by commit time they describe what was implemented. Otherwise, keep proposals, hypothetical designs, and future work outside \`${vault}\` unless the user explicitly requests them there. Do not use \`${vault}\` as a journal/changelog or add notes for insignificant details.`,
   );
 
-  const latDir = findLatticeDir();
   if (latDir && userPrompt) {
     const ctx = makeHookCtx(latDir);
 
@@ -183,8 +190,8 @@ const LATMD_UPPER_THRESHOLD = 50;
 
 type DiffFileKind = 'code' | 'latMd';
 
-function diffFileKind(file: string): DiffFileKind | null {
-  if (file.startsWith('lat.md/')) return 'latMd';
+function diffFileKind(file: string, vaultPrefix: string): DiffFileKind | null {
+  if (file.startsWith(vaultPrefix)) return 'latMd';
   if (isSourceFileExtension(extname(file))) return 'code';
   return null;
 }
@@ -215,7 +222,10 @@ function countUntrackedFileLines(projectRoot: string, file: string): number {
  * Outside a Git worktree both scans contribute zero churn by design: Git is
  * optional, so the hook still validates the project but skips the sync ratio.
  */
-export function analyzeDiff(projectRoot: string): {
+export function analyzeDiff(
+  projectRoot: string,
+  vaultPrefix = 'lat.md/',
+): {
   codeLines: number;
   latMdLines: number;
 } {
@@ -244,7 +254,7 @@ export function analyzeDiff(projectRoot: string): {
       if (parts.length < 3) continue;
       const added = parseInt(parts[0], 10) || 0;
       const removed = parseInt(parts[1], 10) || 0;
-      const kind = diffFileKind(parts[2]);
+      const kind = diffFileKind(parts[2], vaultPrefix);
       if (kind) tally(kind, added + removed);
     }
   } catch {
@@ -264,7 +274,7 @@ export function analyzeDiff(projectRoot: string): {
     );
     for (const file of output.split('\0')) {
       if (!file) continue;
-      const kind = diffFileKind(file);
+      const kind = diffFileKind(file, vaultPrefix);
       if (!kind) continue;
       tally(kind, countUntrackedFileLines(projectRoot, file));
     }
@@ -281,10 +291,13 @@ type StopStatus = {
   needsSync: boolean;
   codeLines: number;
   latMdLines: number;
+  /** Vault path with a trailing slash, e.g. `lat.md/` or `docs/`. */
+  vault: string;
 };
 
 async function getStopStatus(latDir: string): Promise<StopStatus> {
   const projectRoot = dirname(latDir);
+  const vault = latticePathPrefix(latDir, projectRoot);
   const run = new CheckRunContext(latDir, projectRoot);
   const [md, code, indexErrors, sectionErrors] = await Promise.all([
     checkMd(latDir, projectRoot, run),
@@ -299,7 +312,7 @@ async function getStopStatus(latDir: string): Promise<StopStatus> {
     sectionErrors.length;
   const checkFailed = totalErrors > 0;
 
-  const { codeLines, latMdLines } = analyzeDiff(projectRoot);
+  const { codeLines, latMdLines } = analyzeDiff(projectRoot, vault);
   let needsSync = false;
   if (codeLines >= DIFF_THRESHOLD && latMdLines < LATMD_UPPER_THRESHOLD) {
     const effectiveLatMd = latMdLines === 0 ? 0 : Math.max(latMdLines, 1);
@@ -312,6 +325,7 @@ async function getStopStatus(latDir: string): Promise<StopStatus> {
     needsSync,
     codeLines,
     latMdLines,
+    vault,
   };
 }
 
@@ -321,6 +335,7 @@ function formatStopReason({
   needsSync,
   codeLines,
   latMdLines,
+  vault,
 }: StopStatus): string | null {
   if (!checkFailed && !needsSync) return null;
 
@@ -330,10 +345,14 @@ function formatStopReason({
     latMdLines === 0
       ? 'The codebase has changes (' +
         codeLines +
-        ' lines) but `lat.md/` was not updated.'
+        ' lines) but `' +
+        vault +
+        '` was not updated.'
       : 'The codebase has changes (' +
         codeLines +
-        ' lines) but `lat.md/` may not be fully in sync (' +
+        ' lines) but `' +
+        vault +
+        '` may not be fully in sync (' +
         latMdLines +
         ' lines changed).';
 
@@ -341,7 +360,7 @@ function formatStopReason({
     parts.push(
       '`lat check` found errors. ' + syncMsg + ' Before finishing:',
       '',
-      '1. Update `lat.md/` where changes affect behavior, architecture, tests, or plans; keep it focused on current state rather than journal/changelog notes.',
+      `1. Update \`${vault}\` where changes affect behavior, architecture, tests, or plans; keep it focused on current state rather than journal/changelog notes.`,
       '2. Run `lat check` until it passes.',
     );
   } else if (checkFailed) {
@@ -353,7 +372,9 @@ function formatStopReason({
   } else {
     parts.push(
       syncMsg +
-        ' Review whether `lat.md/` needs a current-state update; do not add journal/changelog notes just to satisfy this reminder. Run `lat search` to find relevant sections and `lat check` at the end.',
+        ' Review whether `' +
+        vault +
+        '` needs a current-state update; do not add journal/changelog notes just to satisfy this reminder. Run `lat search` to find relevant sections and `lat check` at the end.',
     );
   }
 

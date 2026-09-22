@@ -3,20 +3,20 @@ name: lat-md
 description: >-
   Writing and maintaining lat.md documentation files — structured markdown that
   describes a project's architecture, design decisions, and test specs. Use when
-  creating, editing, or reviewing files in the lat.md/ directory.
+  creating, editing, or reviewing files in the __LAT_DIR__/ directory.
 ---
 
 # lat.md Authoring Guide
 
-This skill covers the syntax, structure rules, and conventions for writing `lat.md/` files. Load it whenever you need to create or edit sections in the `lat.md/` directory.
+This skill covers the syntax, structure rules, and conventions for writing `__LAT_DIR__/` files. Load it whenever you need to create or edit sections in the `__LAT_DIR__/` directory.
 
-Project-specific lat documentation belongs in `lat.md/`. Do not modify this generated skill or a generated `AGENTS.md` to record project guidance: both are owned by lat tooling and may be replaced by a later `lat init`.
+Project-specific lat documentation belongs in `__LAT_DIR__/`. Do not modify this generated skill or a generated `AGENTS.md` to record project guidance: both are owned by lat tooling and may be replaced by a later `lat init`.
 
 ## What belongs in lat.md
 
-`lat.md/` files describe **what** the project does and **why** — domain concepts, key design decisions, business logic, and test specifications. They do NOT duplicate source code. Think of each section as an anchor that source code references back to.
+`__LAT_DIR__/` files describe **what** the project does and **why** — domain concepts, key design decisions, business logic, and test specifications. They do NOT duplicate source code. Think of each section as an anchor that source code references back to.
 
-Treat `lat.md/` as a focused snapshot of the current implemented state. Plans may be drafted in `lat.md/` alongside implementation, with the intent that by commit time they describe what was implemented. Otherwise, keep proposals, hypothetical designs, and future work outside `lat.md/` unless the user explicitly requests them there. A planning-only task does not require a knowledge-graph update. Do not use it as a journal or changelog, and do not grow it just to record insignificant implementation details.
+Treat `__LAT_DIR__/` as a focused snapshot of the current implemented state. Plans may be drafted in `__LAT_DIR__/` alongside implementation, with the intent that by commit time they describe what was implemented. Otherwise, keep proposals, hypothetical designs, and future work outside `__LAT_DIR__/` unless the user explicitly requests them there. A planning-only task does not require a knowledge-graph update. Do not use it as a journal or changelog, and do not grow it just to record insignificant implementation details.
 
 Good candidates for sections:
 - Architecture decisions and their rationale
@@ -65,10 +65,10 @@ This is invalid — "Bad Section" has no leading paragraph.
 
 Sections are addressed by file path and heading chain:
 
-- **Full form**: `lat.md/path/to/file#Heading#SubHeading`
+- **Full form**: `__LAT_DIR__/path/to/file#Heading#SubHeading`
 - **Short form**: `file#Heading#SubHeading` (when the file stem is unique)
 
-Examples: `lat.md/tests/search#RAG Replay Tests`, `cli#init`, `parser#Wiki Links`.
+Examples: `__LAT_DIR__/tests/search#RAG Replay Tests`, `cli#init`, `parser#Wiki Links`.
 
 Configured external sources use `[[handle:path/to/file.md#Heading]]` for
 Markdown headings and `[[handle:path/to/file.ts#symbol]]` for supported code
@@ -98,7 +98,7 @@ Reference any existing file or directory beneath the project root without a frag
 [[src/components]]
 ```
 
-Unsupported formats validate as references but cannot be opened by Lat. A `#fragment` requires a `lat.md/` section or a supported source file.
+Unsupported formats validate as references but cannot be opened by Lat. A `#fragment` requires a `__LAT_DIR__/` section or a supported source file.
 
 ### Source code links
 
@@ -119,7 +119,7 @@ When prose names an implementation symbol or a behavior governed by one, link th
 
 ## Code refs
 
-Tie source code back to `lat.md/` sections with `@lat:` comments:
+Tie source code back to `__LAT_DIR__/` sections with `@lat:` comments:
 
 ```typescript
 // @lat: [[cli#init]]
@@ -138,7 +138,7 @@ Place one `@lat:` comment per section, at the relevant code — not at the top o
 
 ## Test specs
 
-Describe tests as sections in `lat.md/` files. Add frontmatter to require that every leaf section has a matching `@lat:` comment in test code:
+Describe tests as sections in `__LAT_DIR__/` files. Add frontmatter to require that every leaf section has a matching `@lat:` comment in test code:
 
 ```markdown
 ---
@@ -177,7 +177,7 @@ Rules:
 
 ## Frontmatter
 
-Optional YAML frontmatter at the top of `lat.md/` files:
+Optional YAML frontmatter at the top of `__LAT_DIR__/` files:
 
 ```yaml
 ---
@@ -190,11 +190,11 @@ Currently the only supported field is `require-code-mention` for test spec enfor
 
 ## Validation
 
-Always run `lat check` after editing `lat.md/` files. It validates:
+Always run `lat check` after editing `__LAT_DIR__/` files. It validates:
 - All wiki links point to existing sections, repository paths, or source code symbols
 - All relative markdown links point to existing files
 - Full and collapsed reference-style links have definitions
 - All `@lat:` code refs point to existing sections
 - Every section has a leading paragraph (≤250 chars)
 - All `require-code-mention` leaf sections are referenced in code
-- Every `lat.md/` directory has an accurate index
+- Every `__LAT_DIR__/` directory has an accurate index

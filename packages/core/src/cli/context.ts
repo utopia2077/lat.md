@@ -1,7 +1,8 @@
 import { statSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { styleText } from 'node:util';
-import { findLatticeDir } from '../project-discovery.js';
+import { findLatticeDir, projectConfigError } from '../project-discovery.js';
+import { latticeDirName } from '../project-config.js';
 import type { CmdContext, Styler } from '../context.js';
 
 export type { CmdContext };
@@ -28,9 +29,21 @@ export function resolveContext(opts: {
     process.env.NO_COLOR = '1';
   }
 
-  const latDir = findLatticeDir(opts.dir) ?? '';
+  const start = resolve(opts.dir ?? process.cwd());
+  const latDir = findLatticeDir(opts.dir);
+
+  // A malformed config would otherwise be silently ignored: discovery falls back
+  // to the default name and can pick up a leftover vault. Fail loudly instead.
+  const configError = projectConfigError(latDir ? dirname(latDir) : start);
+  if (configError) {
+    console.error(styleText('red', configError));
+    console.error(styleText('dim', 'Fix or remove it to continue.'));
+    process.exit(1);
+  }
   if (!latDir) {
-    console.error(styleText('red', 'No lat.md directory found'));
+    console.error(
+      styleText('red', `No ${latticeDirName(start)} directory found`),
+    );
     console.error(styleText('dim', 'Run `lat init` to create one.'));
     process.exit(1);
   }

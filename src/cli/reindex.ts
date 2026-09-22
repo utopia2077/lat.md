@@ -99,7 +99,7 @@ export async function reindexCommand(
     // Resolve from the env key (bare + unpinned, or explicit --remote). Verify
     // it with a tiny probe first, so an invalid key doesn't wipe a working index.
     try {
-      const remote = await embedderFromEnv();
+      const remote = await embedderFromEnv(ctx.latDir);
       await remote.embed(['lat reindex: verifying embedding key']);
       embedder = remote;
     } catch (err) {
@@ -141,6 +141,15 @@ export async function reindexCommand(
         }
       : undefined;
 
+    // A rate-limit wait produces no batch progress, so it would otherwise look
+    // like a hang. Clear the spinner line before reporting, and let the next
+    // progress tick redraw it.
+    const onNotice = (message: string) => {
+      process.stderr.write(
+        (interactive ? '\r\x1b[K' : '') + s.yellow(message) + '\n',
+      );
+    };
+
     if (interactive)
       process.stderr.write(`${SPINNER[0]} ${s.dim(label + '…')}`);
     else process.stderr.write(s.dim(label + '…\n'));
@@ -153,6 +162,7 @@ export async function reindexCommand(
         embedder,
         onProgress,
         await commandProjectAnalysis(ctx),
+        onNotice,
       );
       // Pin the backend only after a successful build, so a failed reindex never
       // records a model that doesn't match a completed index.

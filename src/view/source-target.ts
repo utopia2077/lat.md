@@ -3,17 +3,24 @@ import { normalizeRepositoryPath } from '@lat.md/core/repository-path';
 import { isSourceFileExtension } from '@lat.md/core/source-formats';
 import { rewriteDocumentLink } from './document-route.js';
 
-/** Resolve ordinary code links relative to their Markdown file, not the vault root. */
+/**
+ * Resolve ordinary code links relative to their Markdown file, not the vault
+ * root. `vaultPrefix` is the vault path plus a trailing slash (`lat.md/` or
+ * `docs/`); it sets the synthetic URL's depth to match the real project-relative
+ * path, so an escaping relative path cannot be normalized back into the project.
+ */
 export function rewriteLocalFileLink(
   value: string,
   sourcePath: string,
+  vaultPrefix = 'lat.md/',
 ): string {
   if (value && !/^(?:[#/]|[a-z][a-z\d+.-]*:)/i.test(value)) {
     try {
-      // Keep a project prefix so URL normalization cannot silently clamp an
-      // escaping relative path back into the project.
       const base = sourcePath.split('/').map(encodeURIComponent).join('/');
-      const url = new URL(value, `http://lat.local/project/lat.md/${base}`);
+      const url = new URL(
+        value,
+        `http://lat.local/project/${vaultPrefix}${base}`,
+      );
       if (
         url.origin === 'http://lat.local' &&
         url.pathname.startsWith('/project/')
@@ -21,7 +28,8 @@ export function rewriteLocalFileLink(
         const path = decodeURIComponent(url.pathname.slice('/project/'.length));
         if (
           normalizeRepositoryPath(path) &&
-          (!path.startsWith('lat.md/') || isSourceFileExtension(extname(path)))
+          (!path.startsWith(vaultPrefix) ||
+            isSourceFileExtension(extname(path)))
         ) {
           return `/code/${path.split('/').map(encodeURIComponent).join('/')}${url.search}${url.hash}`;
         }

@@ -239,11 +239,15 @@ program
 
 program
   .command('init')
-  .description('Initialize a lat.md directory')
+  .description('Initialize the knowledge-graph directory')
   .argument('[dir]', 'target directory (default: cwd)')
-  .action(async (dir?: string) => {
+  .option(
+    '--vault <name>',
+    'vault directory name, e.g. docs (default: lat.md, or the configured name)',
+  )
+  .action(async (dir?: string, opts?: { vault?: string }) => {
     const { initCmd } = await import('./init.js');
-    await initCmd(dir);
+    await initCmd(dir, { vault: opts?.vault });
   });
 
 program

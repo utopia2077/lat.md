@@ -22,6 +22,7 @@ Shared patterns for writing and organizing tests in this project.
 - [[locate]] — Finding sections by exact, subsection, and fuzzy matching
 - [[refs-e2e]] — End-to-end tests for the refs command
 - [[search]] — Semantic search provider detection and RAG replay tests
+- [[remote-embedder]] — OpenAI-compatible endpoint selection, width probing, and rate-limit handling
 - [[check-index]] — Validating directory index files
 - [[expand]] — Expand command ref expansion and context block formatting
 - [[ref-resolution]] — Wiki link and code ref resolution across vault subdirectories
@@ -32,6 +33,7 @@ Shared patterns for writing and organizing tests in this project.
 - [[section]] — getSection core function and formatSectionOutput formatter
 - [[hook]] — Lifecycle hook context injection, conditional continuation, and setup merging
 - [[init]] — Initialization defaults for local-first semantic search
+- [[project-config]] — Project-level vault directory config and discovery
 - [[config]] — User-level configuration and repository embedding preference persistence
 - [[ts-fallback]] — Pure-TypeScript code-ref scanner fallback without ripgrep
 - [[php-source-parser]] — PHP source parsing and code-reference scanning

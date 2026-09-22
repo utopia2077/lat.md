@@ -15,6 +15,17 @@ export function getConfigPath(): string {
 
 // ── Config read/write ───────────────────────────────────────────────
 
+export type RepoPreference = {
+  /** Present only when the repo is pinned to the offline model. */
+  embedding?: 'local';
+  /**
+   * Explicit OpenAI-compatible endpoint and model. Needed for gateways that
+   * issue `sk-` keys, which key-prefix detection would route to OpenAI.
+   */
+  baseUrl?: string;
+  model?: string;
+};
+
 export type LatConfig = {
   llm_key?: string;
   /**
@@ -22,7 +33,7 @@ export type LatConfig = {
    * (survives deletion of the regenerable `.cache`), so a repo explicitly
    * switched to local stays local even after a cache wipe or fresh clone.
    */
-  repos?: Record<string, { embedding?: 'local' }>;
+  repos?: Record<string, RepoPreference>;
 };
 
 export function readConfig(): LatConfig {
@@ -51,18 +62,53 @@ export function getRepoEmbedding(latDir: string): 'local' | undefined {
   return readConfig().repos?.[resolve(latDir)]?.embedding;
 }
 
+/** Everything recorded for one repo. */
+export function getRepoPreference(latDir: string): RepoPreference | undefined {
+  return readConfig().repos?.[resolve(latDir)];
+}
+
+function updateRepoPreference(
+  latDir: string,
+  update: (current: RepoPreference) => RepoPreference | null,
+): void {
+  const key = resolve(latDir);
+  const config = readConfig();
+  const repos = config.repos ?? {};
+  const next = update(repos[key] ?? {});
+  if (next === null) delete repos[key];
+  else repos[key] = next;
+  config.repos = repos;
+  writeConfig(config);
+}
+
 /** Record (or clear, with `null`) the durable per-repo backend choice. */
 export function setRepoEmbedding(
   latDir: string,
   embedding: 'local' | null,
 ): void {
-  const key = resolve(latDir);
-  const config = readConfig();
-  const repos = config.repos ?? {};
-  if (embedding === null) delete repos[key];
-  else repos[key] = { embedding };
-  config.repos = repos;
-  writeConfig(config);
+  updateRepoPreference(latDir, (current) => {
+    if (embedding === null) {
+      // Clear only the pin: the entry may also hold an explicit endpoint.
+      const { embedding: _pin, ...rest } = current;
+      return Object.keys(rest).length ? rest : null;
+    }
+    return { ...current, embedding };
+  });
+}
+
+/**
+ * Explicit OpenAI-compatible endpoint for a repo: environment wins so a run or
+ * a CI job can point at another gateway without editing the config file, then
+ * the durable per-repo preference.
+ */
+export function getRemoteSelection(latDir?: string): {
+  baseUrl?: string;
+  model?: string;
+} {
+  const baseUrl = process.env.LAT_LLM_BASE_URL?.trim();
+  const model = process.env.LAT_LLM_MODEL?.trim();
+  if (baseUrl || model) return { baseUrl, model };
+  return latDir ? (getRepoPreference(latDir) ?? {}) : {};
 }
 
 // ── Centralized LLM key resolution ─────────────────────────────────

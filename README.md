@@ -15,7 +15,7 @@
 
 ## The idea
 
-Compress the knowledge about your program domain into a **graph** — a set of interconnected markdown files that live in a `lat.md/` directory at the root of your project. Sections link to each other with `[[wiki links]]`, markdown files link into the codebase (`[[src/auth.ts#validateToken]]`), source files link back with `// @lat: [[section-id]]` comments, and `lat check` ensures nothing drifts out of sync.
+Compress the knowledge about your program domain into a **graph** — a set of interconnected markdown files that live in a vault directory at the root of your project. The vault is `lat.md/` by default; name your own in `lat.config.json` (see [Configuration](#configuration)). Sections link to each other with `[[wiki links]]`, markdown files link into the codebase (`[[src/auth.ts#validateToken]]`), source files link back with `// @lat: [[section-id]]` comments, and `lat check` ensures nothing drifts out of sync.
 
 - **Faster coding for agents** — instead of grepping through your codebase, agents search the knowledge graph to discover key design decisions, constraints, and domain context fast and consistently.
 
@@ -74,7 +74,7 @@ Maintainers build and test the artifact with `pnpm build:action` and `pnpm test:
 
 ## How it works
 
-Run `lat init` to scaffold a `lat.md/` directory, then write markdown files describing your architecture, business logic, test specs — whatever matters. Link between sections using `[[file#Section#Subsection]]` syntax. Link to source code symbols with `[[src/auth.ts#validateToken]]`. Annotate source code with `// @lat: [[section-id]]` (or `# @lat: [[section-id]]` in Python and PHP) comments to tie implementation back to concepts.
+Run `lat init` to scaffold the vault directory (`lat init --vault docs` to use an existing `docs/`), then write markdown files describing your architecture, business logic, test specs — whatever matters. Link between sections using `[[file#Section#Subsection]]` syntax. Link to source code symbols with `[[src/auth.ts#validateToken]]`. Annotate source code with `// @lat: [[section-id]]` (or `# @lat: [[section-id]]` in Python and PHP) comments to tie implementation back to concepts.
 
 ```
 my-project/
@@ -91,7 +91,8 @@ my-project/
 ## CLI
 
 ```bash
-lat init                        # scaffold a lat.md/ directory
+lat init                        # scaffold the vault directory
+lat init --vault docs           # use a different directory name
 lat check                       # run full graph and documentation validation
 lat locate "OAuth Flow"         # find sections by name (exact, fuzzy)
 lat section "auth#OAuth Flow"   # show a section with its links and refs
@@ -113,6 +114,30 @@ To use higher-quality hosted embeddings instead, provide an OpenAI (`sk-...`) or
 4. Config file — power users can set `llm_key` manually. Run `lat paths --config` to print its location. Run `lat paths` to see cache and other storage paths with their purposes.
 
 Switch backends any time with `lat reindex` (`--local` to force the offline model, `--remote` to use your key).
+
+Any other OpenAI-compatible endpoint works too — gateways such as SiliconFlow issue `sk-` keys, so name the endpoint explicitly:
+
+```bash
+export LAT_LLM_KEY=sk-...
+export LAT_LLM_BASE_URL=https://api.siliconflow.cn/v1
+export LAT_LLM_MODEL=BAAI/bge-m3
+lat reindex --remote
+```
+
+Providers that rate-limit by tokens per minute answer `429`; indexing waits out the limit and continues. If a single batch is too large to ever fit, lower `LAT_EMBED_BATCH_TOKENS`.
+
+### Project configuration
+
+`lat.config.json` at the project root names the vault directory and keeps paths out of the graph:
+
+```json
+{
+  "dir": "docs",
+  "exclude": ["private"]
+}
+```
+
+`exclude` entries are relative to the vault; naming a directory keeps its whole subtree out of validation, search, and the exported site. Without a config file the vault stays `lat.md/`.
 
 ## Development
 

@@ -1,11 +1,16 @@
 import { agentInvocation } from './agent-invocation.js';
 import { projectWritePath, writeProjectFile } from '@lat.md/core/project-write';
-import { existsSync, cpSync, mkdirSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import {
+  existsSync,
+  cpSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+} from 'node:fs';
+import { basename, dirname, join, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { styleText } from 'node:util';
-import { createEmbedder } from '@lat.md/embed';
 import { findTemplatesDir } from './templates.js';
 import {
   readAgentsTemplate,
@@ -21,7 +26,7 @@ import {
 } from '@lat.md/core/config';
 import { makeStyler } from '@lat.md/core/cli/context';
 import { closeDb, getStoredModel, openDb } from '../search/db.js';
-import { modelKey } from '../search/embedder.js';
+import { embedderFromEnv, modelKey } from '../search/embedder.js';
 import { reindexCommand } from './reindex.js';
 import {
   INIT_VERSION,
@@ -31,6 +36,13 @@ import {
   contentHash,
 } from '@lat.md/core/init-version';
 import { getLocalVersion, fetchLatestVersion } from '../version.js';
+import {
+  DEFAULT_LATTICE_DIR_NAME,
+  LAT_CONFIG_FILE,
+  latticeIndexFileName,
+  readLatProjectConfig,
+  validateLatticeDirName,
+} from '@lat.md/core/project-discovery';
 import { selectMenu, type SelectOption } from '@lat.md/core/cli/select-menu';
 import { checklistMenu } from './checklist-menu.js';
 import { readInitAgents, writeInitAgents } from './init-preferences.js';
@@ -623,11 +635,11 @@ async function writeAgentsSkill(
   console.log(
     styleText(
       'dim',
-      '  The lat-md skill teaches the agent how to write and maintain lat.md/ files.',
+      `  The lat-md skill teaches the agent how to write and maintain ${basename(latDir)}/ files.`,
     ),
   );
 
-  const skillTemplate = readSkillTemplate();
+  const skillTemplate = readSkillTemplate(basename(latDir));
   const skillHash = await writeTemplateFile(
     root,
     latDir,
@@ -691,7 +703,10 @@ async function setupClaudeCode(
     ),
   );
   console.log(
-    styleText('dim', '  the agent to update lat.md/ before finishing.'),
+    styleText(
+      'dim',
+      `  the agent to update ${basename(latDir)}/ before finishing.`,
+    ),
   );
 
   const claudeDir = projectWritePath(root, join(root, '.claude'));
@@ -708,11 +723,11 @@ async function setupClaudeCode(
   console.log(
     styleText(
       'dim',
-      '  The lat-md skill teaches the agent how to write and maintain lat.md/ files.',
+      `  The lat-md skill teaches the agent how to write and maintain ${basename(latDir)}/ files.`,
     ),
   );
 
-  const skillTemplate = readSkillTemplate();
+  const skillTemplate = readSkillTemplate(basename(latDir));
   const skillHash = await writeTemplateFile(
     root,
     latDir,
@@ -769,7 +784,7 @@ async function setupCursor(
     root,
     latDir,
     '.cursor/rules/lat.md',
-    readCursorRulesTemplate(),
+    readCursorRulesTemplate(basename(latDir)),
     'cursor-rules.md',
     'Rules (.cursor/rules/lat.md)',
     '  ',
@@ -782,7 +797,7 @@ async function setupCursor(
   console.log(
     styleText(
       'dim',
-      '  Cursor hooks can enforce the lat.md/ stop check, while prompt guidance',
+      `  Cursor hooks can enforce the ${basename(latDir)}/ stop check, while prompt guidance`,
     ),
   );
   console.log(
@@ -854,7 +869,7 @@ async function setupCopilot(
     root,
     latDir,
     '.github/copilot-instructions.md',
-    readAgentsTemplate(),
+    readAgentsTemplate(basename(latDir)),
     'Instructions (.github/copilot-instructions.md)',
     '  ',
     ask,
@@ -911,12 +926,13 @@ async function setupPi(
   console.log(
     styleText(
       'dim',
-      '  to inject search context and validate lat.md/ before finishing.',
+      `  to inject search context and validate ${basename(latDir)}/ before finishing.`,
     ),
   );
 
-  const template = readPiExtensionTemplate().replace('__LAT_INVOCATION__', () =>
-    JSON.stringify(agentInvocation(style, resolveLatInvocation())),
+  const template = readPiExtensionTemplate(basename(latDir)).replace(
+    '__LAT_INVOCATION__',
+    () => JSON.stringify(agentInvocation(style, resolveLatInvocation())),
   );
 
   const hash = await writeTemplateFile(
@@ -936,11 +952,11 @@ async function setupPi(
   console.log(
     styleText(
       'dim',
-      '  The lat-md skill teaches the agent how to write and maintain lat.md/ files.',
+      `  The lat-md skill teaches the agent how to write and maintain ${basename(latDir)}/ files.`,
     ),
   );
 
-  const skillTemplate = readSkillTemplate();
+  const skillTemplate = readSkillTemplate(basename(latDir));
   const skillHash = await writeTemplateFile(
     root,
     latDir,
@@ -978,11 +994,11 @@ async function setupOpenCode(
   console.log(
     styleText(
       'dim',
-      '  lifecycle to validate lat.md/ when the agent finishes.',
+      `  lifecycle to validate ${basename(latDir)}/ when the agent finishes.`,
     ),
   );
 
-  const template = readOpenCodePluginTemplate().replace(
+  const template = readOpenCodePluginTemplate(basename(latDir)).replace(
     '__LAT_INVOCATION__',
     () => JSON.stringify(agentInvocation(style, resolveLatInvocation())),
   );
@@ -1025,7 +1041,10 @@ async function setupCodex(
     ),
   );
   console.log(
-    styleText('dim', '  the agent to update lat.md/ before finishing.'),
+    styleText(
+      'dim',
+      `  the agent to update ${basename(latDir)}/ before finishing.`,
+    ),
   );
 
   const codexDir = projectWritePath(root, join(root, '.codex'));
@@ -1072,11 +1091,11 @@ async function setupCodex(
   console.log(
     styleText(
       'dim',
-      '  The lat-md skill teaches the agent how to write and maintain lat.md/ files.',
+      `  The lat-md skill teaches the agent how to write and maintain ${basename(latDir)}/ files.`,
     ),
   );
 
-  const skillTemplate = readSkillTemplate();
+  const skillTemplate = readSkillTemplate(basename(latDir));
   const skillHash = await writeTemplateFile(
     root,
     latDir,
@@ -1178,7 +1197,11 @@ async function setupEmbeddingsForInit(
   let remoteModel: string | null = null;
   try {
     key = getLlmKey();
-    if (key) remoteModel = modelKey(await createEmbedder({ key }));
+    // Resolve through the same path `lat search` uses. Building the embedder
+    // from the bare key would ignore a configured OpenAI-compatible endpoint,
+    // report a gateway key as an unusable provider, and then pin the repo to
+    // local embeddings — silently undoing a working hosted setup.
+    if (key) remoteModel = modelKey(await embedderFromEnv(latDir));
   } catch (err) {
     key = undefined;
     console.log('');
@@ -1284,6 +1307,13 @@ async function setupEmbeddingsForInit(
         ' and running',
     );
     console.log('  ' + styleText('cyan', 'lat reindex --remote') + '.');
+    console.log(
+      '  Any OpenAI-compatible endpoint also needs ' +
+        styleText('cyan', 'LAT_LLM_BASE_URL') +
+        ' and ' +
+        styleText('cyan', 'LAT_LLM_MODEL') +
+        '.',
+    );
   }
 
   await offerReindex(
@@ -1298,10 +1328,10 @@ async function setupEmbeddingsForInit(
 
 // ── Post-onboarding guidance ─────────────────────────────────────────
 
-const NEXT_STEP_PROMPT =
-  'Read through this codebase and set up lat.md/ to document its architecture, key design decisions, and domain concepts. Run `lat check` when done.';
+const nextStepPrompt = (vaultLabel: string): string =>
+  `Read through this codebase and set up ${vaultLabel} to document its architecture, key design decisions, and domain concepts. Run \`lat check\` when done.`;
 
-function printNextSteps(selectedAgents: string[]): void {
+function printNextSteps(selectedAgents: string[], vaultLabel: string): void {
   const hasClaudeCode = selectedAgents.includes('claude');
   const ideAgents = selectedAgents.filter((a) => a !== 'claude');
 
@@ -1324,7 +1354,9 @@ function printNextSteps(selectedAgents: string[]): void {
   if (hasClaudeCode) {
     console.log('');
     console.log('  ' + styleText('bold', 'Claude Code:'));
-    console.log('    ' + styleText('cyan', `claude "${NEXT_STEP_PROMPT}"`));
+    console.log(
+      '    ' + styleText('cyan', `claude "${nextStepPrompt(vaultLabel)}"`),
+    );
   }
 
   if (ideAgents.length > 0) {
@@ -1333,7 +1365,7 @@ function printNextSteps(selectedAgents: string[]): void {
     console.log(
       '  ' + styleText('bold', `${names}`) + ' — paste into agent chat:',
     );
-    console.log('    ' + styleText('cyan', NEXT_STEP_PROMPT));
+    console.log('    ' + styleText('cyan', nextStepPrompt(vaultLabel)));
   }
 }
 
@@ -1353,7 +1385,104 @@ export function ensureLatLocalConfigIgnored(latDir: string): void {
   writeProjectFile(root, path, `${prefix}${entry}\n`);
 }
 
-export async function initCmd(targetDir?: string): Promise<void> {
+/**
+ * Vault directory name for this init run: an explicit `--vault` wins, then an
+ * existing config file, then the default. Validated with the same rule the
+ * config parser applies, so init cannot record a name it would later reject.
+ */
+function resolveInitVaultName(root: string, requested?: string): string {
+  if (requested !== undefined) {
+    const problem = validateLatticeDirName(requested);
+    if (problem) {
+      console.error(styleText('red', `--vault ${problem}`));
+      process.exit(1);
+    }
+    return requested;
+  }
+  return readLatProjectConfig(root).config.dir ?? DEFAULT_LATTICE_DIR_NAME;
+}
+
+/**
+ * Record the vault directory in the project config, preserving keys lat does
+ * not own. Nothing is written when the configured name already matches, so a
+ * repo that keeps `lat.md/` stays byte-identical to what earlier versions
+ * produced — but switching *back* to `lat.md` after a rename must still be
+ * recorded, or the config keeps pointing at the old directory and the new vault
+ * is unreachable.
+ */
+function writeInitProjectConfig(
+  root: string,
+  vaultName: string,
+  configuredName: string | undefined,
+): void {
+  if (vaultName === configuredName) return;
+  if (vaultName === DEFAULT_LATTICE_DIR_NAME && configuredName === undefined)
+    return;
+  const path = join(root, LAT_CONFIG_FILE);
+  let existing: Record<string, unknown> = {};
+  if (existsSync(path)) {
+    try {
+      const parsed: unknown = JSON.parse(readFileSync(path, 'utf-8'));
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed))
+        existing = parsed as Record<string, unknown>;
+    } catch {
+      // A malformed file is already a loud error everywhere else; replace it.
+    }
+  }
+  writeProjectFile(
+    root,
+    path,
+    `${JSON.stringify({ ...existing, dir: vaultName }, null, 2)}\n`,
+  );
+}
+
+/**
+ * The scaffold ships its index as `lat.md`, named after the default vault.
+ * Repoint it at the real directory name, since the index file must share its
+ * directory's name for `lat check` to find it.
+ */
+function renameScaffoldedIndex(latDir: string): void {
+  // The scaffolded index ships as `lat.md` — the default directory name, which
+  // already carries the `.md` suffix. Not `${DEFAULT_LATTICE_DIR_NAME}.md`.
+  const templateName = DEFAULT_LATTICE_DIR_NAME;
+  const indexName = latticeIndexFileName(latDir);
+  if (indexName === templateName) return;
+  const templateIndex = join(latDir, templateName);
+  if (!existsSync(templateIndex)) return;
+  renameSync(templateIndex, join(latDir, indexName));
+}
+
+/** Report the index file `lat check` will ask for when a vault already exists. */
+function reportVaultIndex(latDir: string): void {
+  const indexName = latticeIndexFileName(latDir);
+  if (existsSync(join(latDir, indexName))) return;
+
+  const legacyName = DEFAULT_LATTICE_DIR_NAME;
+  if (indexName !== legacyName && existsSync(join(latDir, legacyName))) {
+    // Renamed vault that still carries the old index file. Suggesting `git mv`
+    // keeps the rename reviewable instead of rewriting history silently.
+    console.log(
+      styleText('yellow', `  ${legacyName} is named after the default vault`) +
+        ` — rename it to ${indexName}:`,
+    );
+    console.log(
+      styleText(
+        'dim',
+        `    git mv ${latDir}/${legacyName} ${latDir}/${indexName}`,
+      ),
+    );
+    return;
+  }
+  console.log(
+    styleText('dim', `  ${indexName} is missing — `) +
+      'lat check will list the entries it needs.',
+  );
+}
+
+export async function initCmd(
+  targetDir?: string,
+  options: { vault?: string } = {},
+): Promise<void> {
   console.log(styleText('cyan', readLogo()));
 
   // Upfront version check — let the user upgrade before proceeding
@@ -1378,7 +1507,8 @@ export async function initCmd(targetDir?: string): Promise<void> {
   }
 
   const root = resolve(targetDir ?? process.cwd());
-  const latDir = join(root, 'lat.md');
+  const vaultName = resolveInitVaultName(root, options.vault);
+  const latDir = join(root, vaultName);
   projectWritePath(root, latDir);
   const storedInitVersion = readInitVersion(latDir);
 
@@ -1396,9 +1526,11 @@ export async function initCmd(targetDir?: string): Promise<void> {
   };
 
   try {
-    // Step 1: lat.md/ directory
+    // Step 1: vault directory
+    const vaultLabel = `${vaultName}/`;
     if (existsSync(latDir)) {
-      console.log(styleText('green', 'lat.md/') + ' already exists');
+      console.log(styleText('green', vaultLabel) + ' already exists');
+      reportVaultIndex(latDir);
     } else {
       // No rl yet — selectMenu hasn't run, so use a one-off confirm
       if (interactive) {
@@ -1407,7 +1539,9 @@ export async function initCmd(targetDir?: string): Promise<void> {
           output: process.stdout,
         });
         try {
-          if (!(await confirm(tmpRl, 'Create lat.md/ directory?'))) {
+          if (
+            !(await confirm(tmpRl, `Create ${basename(latDir)}/ directory?`))
+          ) {
             console.log('Aborted.');
             return;
           }
@@ -1418,9 +1552,15 @@ export async function initCmd(targetDir?: string): Promise<void> {
       const templateDir = join(findTemplatesDir(), 'init');
       mkdirSync(latDir, { recursive: true });
       cpSync(templateDir, latDir, { recursive: true });
-      console.log(styleText('green', 'Created lat.md/'));
+      renameScaffoldedIndex(latDir);
+      console.log(styleText('green', `Created ${basename(latDir)}/`));
     }
 
+    writeInitProjectConfig(
+      root,
+      vaultName,
+      readLatProjectConfig(root).config.dir,
+    );
     ensureLatLocalConfigIgnored(latDir);
     ensureGitignored(root, '.lat-build');
 
@@ -1515,7 +1655,7 @@ export async function initCmd(targetDir?: string): Promise<void> {
     }
 
     console.log('');
-    const template = readAgentsTemplate();
+    const template = readAgentsTemplate(basename(latDir));
     const fileHashes: Record<string, string> = {};
 
     // Step 5: AGENTS.md (shared by non-Claude agents)
@@ -1599,7 +1739,7 @@ export async function initCmd(targetDir?: string): Promise<void> {
     }
 
     // Post-onboarding: suggest having the agent document the codebase
-    printNextSteps(selectedAgents);
+    printNextSteps(selectedAgents, `${basename(latDir)}/`);
   } finally {
     rl?.close();
   }

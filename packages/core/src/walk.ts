@@ -3,6 +3,7 @@ import { availableParallelism } from 'node:os';
 import { join } from 'node:path';
 // @ts-expect-error -- no type declarations
 import walk from 'ignore-walk';
+import { normalizeRelativePath } from './path.js';
 
 type IgnoreWalkerOptions = {
   path: string;
@@ -65,7 +66,10 @@ type DirectoryResult = {
   files: string[];
 };
 
-async function readDirectory(job: DirectoryJob): Promise<DirectoryResult> {
+async function readDirectory(
+  job: DirectoryJob,
+  excluded: ReadonlySet<string>,
+): Promise<DirectoryResult> {
   const entries = await readdir(job.path, { withFileTypes: true });
   if (entries.some((entry) => entry.name === '.gitignore')) {
     const rules = await readFile(join(job.path, '.gitignore'), 'utf8');
@@ -77,6 +81,13 @@ async function readDirectory(job: DirectoryJob): Promise<DirectoryResult> {
   for (const entry of entries) {
     if (entry.isSymbolicLink()) continue;
 
+    // Prune an excluded directory outright: its whole subtree is out of scope,
+    // so there is no reason to descend into it.
+    const relativePath = job.relativePath
+      ? `${job.relativePath}/${entry.name}`
+      : entry.name;
+    if (excluded.has(relativePath)) continue;
+
     if (entry.isDirectory()) {
       const passDirectory = job.ignoreContext.filterEntry(entry.name, true);
       if (!passDirectory) continue;
@@ -84,9 +95,7 @@ async function readDirectory(job: DirectoryJob): Promise<DirectoryResult> {
       const path = join(job.path, entry.name);
       directories.push({
         path,
-        relativePath: job.relativePath
-          ? `${job.relativePath}/${entry.name}`
-          : entry.name,
+        relativePath,
         ignoreContext: new IgnoreContext({
           path,
           parent: job.ignoreContext,
@@ -95,16 +104,17 @@ async function readDirectory(job: DirectoryJob): Promise<DirectoryResult> {
         }),
       });
     } else if (job.ignoreContext.filterEntry(entry.name)) {
-      files.push(
-        job.relativePath ? `${job.relativePath}/${entry.name}` : entry.name,
-      );
+      files.push(relativePath);
     }
   }
 
   return { directories, files };
 }
 
-async function walkWithDirectoryPool(root: DirectoryJob): Promise<string[]> {
+async function walkWithDirectoryPool(
+  root: DirectoryJob,
+  excluded: ReadonlySet<string>,
+): Promise<string[]> {
   const queue = [root];
   const files: string[] = [];
   const workerLimit = availableParallelism();
@@ -120,7 +130,7 @@ async function walkWithDirectoryPool(root: DirectoryJob): Promise<string[]> {
       while (activeWorkers < workerLimit && nextJob < queue.length) {
         const job = queue[nextJob++];
         activeWorkers++;
-        void readDirectory(job).then(
+        void readDirectory(job, excluded).then(
           (result) => {
             files.push(...result.files);
             queue.push(...result.directories);
@@ -147,6 +157,16 @@ async function walkWithDirectoryPool(root: DirectoryJob): Promise<string[]> {
   });
 }
 
+/** Normalize configured exclude paths to the walked dir's relative POSIX form. */
+function normalizeExcludes(exclude: readonly string[]): Set<string> {
+  const normalized = new Set<string>();
+  for (const entry of exclude) {
+    const path = normalizeRelativePath(entry);
+    if (path) normalized.add(path);
+  }
+  return normalized;
+}
+
 /**
  * Walk a directory tree respecting nested .gitignore rules. Directories are
  * consumed through a bounded queue, and each completed job submits its visible
@@ -155,16 +175,27 @@ async function walkWithDirectoryPool(root: DirectoryJob): Promise<string[]> {
  * This is the single entry point for all directory walking in lat.md — both
  * code-ref scanning and lat.md/ index validation use it so .gitignore rules
  * are consistently honored.
+ *
+ * `exclude` holds paths relative to `dir`; naming a directory prunes its whole
+ * subtree. It is the explicit counterpart to a `.gitignore` rule: it applies
+ * whether or not the project is a Git checkout, and whether or not the paths it
+ * names are committed.
  */
-export function walkEntries(dir: string): Promise<string[]> {
-  return walkWithDirectoryPool({
-    path: dir,
-    relativePath: '',
-    ignoreContext: new IgnoreContext({
+export function walkEntries(
+  dir: string,
+  exclude: readonly string[] = [],
+): Promise<string[]> {
+  return walkWithDirectoryPool(
+    {
       path: dir,
-      ignoreFiles: ['.gitignore'],
-    }),
-  });
+      relativePath: '',
+      ignoreContext: new IgnoreContext({
+        path: dir,
+        ignoreFiles: ['.gitignore'],
+      }),
+    },
+    normalizeExcludes(exclude),
+  );
 }
 
 /**

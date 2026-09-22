@@ -176,6 +176,10 @@
       "types": "./dist/project-analysis.d.ts",
       "import": "./dist/project-analysis.js"
     },
+    "./project-config": {
+      "types": "./dist/project-config.d.ts",
+      "import": "./dist/project-config.js"
+    },
     "./project-discovery": {
       "types": "./dist/project-discovery.d.ts",
       "import": "./dist/project-discovery.js"

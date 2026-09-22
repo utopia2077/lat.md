@@ -230,7 +230,7 @@ export default function (pi: ExtensionAPI) {
       const hint = keyHint("expandTools", "to expand");
       box.addChild(new Text(
         theme.fg("accent", "lat.md") + " " +
-        theme.fg("dim", `Search lat.md before starting work. Keep lat.md/ focused. (${hint})`),
+        theme.fg("dim", `Search lat.md before starting work. Keep __LAT_DIR__/ focused. (${hint})`),
         0, 0,
       ));
     }
@@ -268,7 +268,7 @@ export default function (pi: ExtensionAPI) {
       "Use `lat_section` to read the full content of relevant matches.",
       "Do not read files, write code, or run commands until you have searched.",
       "",
-      "Remember: `lat.md/` must stay in sync with meaningful codebase state. If you change implemented behavior, architecture, or tests, update the relevant current-state sections and run `lat_check` before finishing. Plans may be drafted in `lat.md/` alongside implementation, with the intent that by commit time they describe what was implemented. Otherwise, keep proposals, hypothetical designs, and future work outside `lat.md/` unless the user explicitly requests them there. Do not use `lat.md/` as a journal/changelog or add notes for insignificant details.",
+      "Remember: `__LAT_DIR__/` must stay in sync with meaningful codebase state. If you change implemented behavior, architecture, or tests, update the relevant current-state sections and run `lat_check` before finishing. Plans may be drafted in `__LAT_DIR__/` alongside implementation, with the intent that by commit time they describe what was implemented. Otherwise, keep proposals, hypothetical designs, and future work outside `__LAT_DIR__/` unless the user explicitly requests them there. Do not use `__LAT_DIR__/` as a journal/changelog or add notes for insignificant details.",
     ].join("\n");
 
     return {
@@ -295,7 +295,7 @@ export default function (pi: ExtensionAPI) {
       checkOutput = (err as { stdout?: string }).stdout || "";
     }
 
-    // Run git diff --numstat to check if lat.md/ is in sync
+    // Run git diff --numstat to check if __LAT_DIR__/ is in sync
     let needsSync = false;
     let codeLines = 0;
     try {
@@ -313,7 +313,7 @@ export default function (pi: ExtensionAPI) {
         const removed = parseInt(parts[1], 10) || 0;
         const file = parts[2];
         const changed = added + removed;
-        if (file.startsWith("lat.md/")) {
+        if (file.startsWith("__LAT_DIR__/")) {
           latMdLines += changed;
         } else if (/\.(ts|tsx|js|jsx|py|rs|go|c|h)$/.test(file)) {
           codeLines += changed;
@@ -333,9 +333,9 @@ export default function (pi: ExtensionAPI) {
     const parts: string[] = [];
     if (checkFailed && needsSync) {
       parts.push(
-        `\`lat check\` found errors AND the codebase has changes (${codeLines} lines) with no updates to \`lat.md/\`. Before finishing:`,
+        `\`lat check\` found errors AND the codebase has changes (${codeLines} lines) with no updates to \`__LAT_DIR__/\`. Before finishing:`,
         "",
-        "1. Update relevant current-state `lat.md/` sections if the changes affect behavior, architecture, tests, or plans; do not add journal/changelog notes.",
+        "1. Update relevant current-state `__LAT_DIR__/` sections if the changes affect behavior, architecture, tests, or plans; do not add journal/changelog notes.",
         "2. Run `lat_check` until it passes.",
       );
     } else if (checkFailed) {
@@ -344,7 +344,7 @@ export default function (pi: ExtensionAPI) {
       );
     } else {
       parts.push(
-        `The codebase has changes (${codeLines} lines) but \`lat.md/\` was not updated. Review whether current-state \`lat.md/\` sections need updates; do not add journal/changelog notes just to satisfy this reminder. Run \`lat_search\` to find relevant sections and \`lat_check\` at the end.`,
+        `The codebase has changes (${codeLines} lines) but \`__LAT_DIR__/\` was not updated. Review whether current-state \`__LAT_DIR__/\` sections need updates; do not add journal/changelog notes just to satisfy this reminder. Run \`lat_search\` to find relevant sections and \`lat_check\` at the end.`,
       );
     }
 

@@ -8,6 +8,10 @@ import {
   inspectRepositoryPath,
 } from '@lat.md/core/repository-path';
 import { walkEntries } from '@lat.md/core/walk';
+import {
+  latticeDirName,
+  latticeExcludePaths,
+} from '@lat.md/core/project-discovery';
 
 const exec = promisify(execFile);
 const portable = (path: string) => path.split(sep).join('/');
@@ -23,9 +27,33 @@ function publicPath(path: string): boolean {
     );
 }
 
+/**
+ * Translate the vault's configured exclusions to project-relative paths: the
+ * walk below starts at the project root, but the config names paths inside the
+ * vault. Shared by both the git and no-git branches so an excluded document
+ * cannot be published just because the checkout has no Git metadata.
+ */
+function vaultExcludes(projectRoot: string, vaultRel: string): string[] {
+  return latticeExcludePaths(join(projectRoot, vaultRel)).map(
+    (path) => `${vaultRel}/${path}`,
+  );
+}
+
+/**
+ * True for an excluded path or anything beneath it. The walker prunes excluded
+ * directories itself, but the git branch enumerates a flat file list, so it has
+ * to apply the prefix rule to each entry.
+ */
+function isExcludedBy(excluded: readonly string[], path: string): boolean {
+  return excluded.some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+  );
+}
+
 /** Publication scope is deliberately narrower than interactive source browsing. */
 export async function createPublicationPolicy(
   projectRoot: string,
+  vaultRel = latticeDirName(projectRoot),
 ): Promise<(path: string) => Promise<boolean>> {
   let files: string[];
   const git = (args: string[]) =>
@@ -55,7 +83,10 @@ export async function createPublicationPolicy(
         if (dirname(directory) === directory) break;
       }
     }
-    files = await walkEntries(projectRoot);
+    files = await walkEntries(
+      projectRoot,
+      vaultExcludes(projectRoot, vaultRel),
+    );
     return policy(new Set(files.filter(publicPath)), projectRoot);
   }
   const ignored = new Set(
@@ -71,12 +102,19 @@ export async function createPublicationPolicy(
       ])
     ).stdout.split('\0'),
   );
+  // `git ls-files` honors .gitignore but knows nothing about the vault config,
+  // so an excluded path that is tracked would otherwise be published.
+  const excluded = vaultExcludes(projectRoot, vaultRel);
   files = tracked.split('\0').flatMap((entry) => {
     const tab = entry.indexOf('\t');
     const mode = entry.slice(0, entry.indexOf(' '));
     if (tab < 0 || !['100644', '100755'].includes(mode)) return [];
     const path = entry.slice(tab + 1);
-    return publicPath(path) && !ignored.has(path) ? [path] : [];
+    return publicPath(path) &&
+      !ignored.has(path) &&
+      !isExcludedBy(excluded, path)
+      ? [path]
+      : [];
   });
   return policy(new Set(files), projectRoot);
 }

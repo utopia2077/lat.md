@@ -118,7 +118,7 @@ export const LatPlugin: Plugin = async (ctx) => {
           checkOutput = (err as { stdout?: string }).stdout || ""
         }
 
-        // Check git diff for lat.md/ sync status
+        // Check git diff for __LAT_DIR__/ sync status
         let needsSync = false
         let codeLines = 0
         try {
@@ -135,7 +135,7 @@ export const LatPlugin: Plugin = async (ctx) => {
             const removed = parseInt(parts[1], 10) || 0
             const file = parts[2]
             const changed = added + removed
-            if (file.startsWith("lat.md/")) {
+            if (file.startsWith("__LAT_DIR__/")) {
               latMdLines += changed
             } else if (/\.(ts|tsx|js|jsx|py|rs|go|c|h)$/.test(file)) {
               codeLines += changed
@@ -155,10 +155,10 @@ export const LatPlugin: Plugin = async (ctx) => {
 
         const message =
           checkFailed && needsSync
-            ? `lat check failed and lat.md/ may be out of sync (${codeLines} code lines changed). Run lat_check, fix errors, and update only relevant current-state lat.md/ sections. Do not add journal/changelog notes.`
+            ? `lat check failed and __LAT_DIR__/ may be out of sync (${codeLines} code lines changed). Run lat_check, fix errors, and update only relevant current-state __LAT_DIR__/ sections. Do not add journal/changelog notes.`
             : checkFailed
               ? `lat check failed. Run lat_check and fix the errors.`
-              : `lat.md/ may be out of sync — ${codeLines} code lines changed but lat.md/ was not updated. Review whether current-state lat.md/ sections need updates; do not add journal/changelog notes. Run lat_check.`
+              : `__LAT_DIR__/ may be out of sync — ${codeLines} code lines changed but __LAT_DIR__/ was not updated. Review whether current-state __LAT_DIR__/ sections need updates; do not add journal/changelog notes. Run lat_check.`
 
         await ctx.client.app.log({
           body: {

@@ -5,6 +5,10 @@ import {
   repositoryRefError,
 } from '@lat.md/core/cli/check';
 import {
+  latticeIndexFileName,
+  latticeDirName,
+} from '@lat.md/core/project-discovery';
+import {
   buildFileIndex,
   buildSectionSlugIndex,
   flattenSections,
@@ -119,7 +123,7 @@ export async function buildViewDiagnostics(
   allSections: Section[],
   projectRoot: string,
   external?: ExternalResolver,
-  latDir = resolve(projectRoot, 'lat.md'),
+  latDir = resolve(projectRoot, latticeDirName(projectRoot)),
 ): Promise<ReadonlyMap<string, readonly ViewDocumentError[]>> {
   const sourceParserRuntime = new SourceParserRuntime();
   const files = [...markdownFiles];
@@ -135,7 +139,9 @@ export async function buildViewDiagnostics(
   );
 
   if (external) {
-    const root = files.find((file) => file.path === 'lat.md') ?? files[0];
+    const root =
+      files.find((file) => file.path === latticeIndexFileName(latDir)) ??
+      files[0];
     if (root) {
       for (const configError of external.snapshot.errors) {
         addError(

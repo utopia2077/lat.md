@@ -46,6 +46,7 @@ const {
   closeDb,
   ensureMeta,
   getLlmKey,
+  getRemoteSelection,
   getRepoEmbedding,
   getStoredModel,
   openDb,
@@ -57,6 +58,9 @@ const {
   ensureMeta: vi.fn(async () => {}),
   getLlmKey: vi.fn(),
   getRepoEmbedding: vi.fn(),
+  // Resolving the embedder consults the endpoint selection; without it the
+  // mocked config module makes init treat a valid key as unusable.
+  getRemoteSelection: vi.fn(() => ({})),
   getStoredModel: vi.fn(async () => null as string | null),
   openDb: vi.fn(() => ({})),
   reindexCommand: vi.fn(),
@@ -66,6 +70,7 @@ const {
 
 vi.mock('@lat.md/core/config', () => ({
   getLlmKey,
+  getRemoteSelection,
   getRepoEmbedding,
   setRepoEmbedding,
 }));
@@ -96,10 +101,12 @@ import { initCmd } from '../src/cli/init.js';
 describe('generated Markdown templates', () => {
   // @lat: [[init#Generated instructions#Templates satisfy graph validation]]
   it('satisfies local graph validation in every Markdown template', () => {
+    // Substituted as `lat init` writes them: the placeholder would otherwise
+    // leave every section-id example unresolved under the default vault name.
     const templates = [
-      ['AGENTS.md', readAgentsTemplate()],
-      ['cursor-rules.md', readCursorRulesTemplate()],
-      ['SKILL.md', readSkillTemplate()],
+      ['AGENTS.md', readAgentsTemplate('lat.md')],
+      ['cursor-rules.md', readCursorRulesTemplate('lat.md')],
+      ['SKILL.md', readSkillTemplate('lat.md')],
     ] as const;
 
     for (const [name, content] of templates) {
@@ -188,10 +195,18 @@ describe('lat init embedding setup', () => {
     getStoredModel.mockResolvedValue(model);
   }
 
-  function runInit(key?: string): CliResult {
+  function runInit(key?: string, extra: string[] = []): CliResult {
     const result = spawnSync(
       process.execPath,
-      ['--import', disableNetworkUrl, cliPath, '--no-color', 'init', root],
+      [
+        '--import',
+        disableNetworkUrl,
+        cliPath,
+        '--no-color',
+        'init',
+        root,
+        ...extra,
+      ],
       {
         cwd: root,
         encoding: 'utf-8',
@@ -257,6 +272,45 @@ describe('lat init embedding setup', () => {
   });
 
   // @lat: [[init#Agent preferences#Remembers completed selections]]
+  // @lat: [[vault#Init]]
+  it('records a custom vault directory and renames the scaffolded index', () => {
+    const result = runInit(undefined, ['--vault', 'docs']);
+    expectSuccess(result);
+
+    expect(
+      JSON.parse(readFileSync(join(root, 'lat.config.json'), 'utf-8')),
+    ).toEqual({ dir: 'docs' });
+    // The scaffold ships its index as `lat.md`; it must follow the vault name,
+    // since an index file has to share its directory's name.
+    expect(existsSync(join(root, 'docs', 'docs.md'))).toBe(true);
+    expect(existsSync(join(root, 'docs', 'lat.md'))).toBe(false);
+  });
+
+  // @lat: [[vault#Init]]
+  it('writes no config file for the default vault name', () => {
+    expectSuccess(runInit());
+    expect(existsSync(join(root, 'lat.md', 'lat.md'))).toBe(true);
+    expect(existsSync(join(root, 'lat.config.json'))).toBe(false);
+  });
+
+  // @lat: [[vault#Init]]
+  it('switches a renamed project back to the default vault', () => {
+    // Renaming back has to be recorded too, or the config keeps pointing at the
+    // old directory and the new vault is unreachable.
+    mkdirSync(join(root, 'docs'), { recursive: true });
+    writeFileSync(
+      join(root, 'lat.config.json'),
+      JSON.stringify({ dir: 'docs' }) + '\n',
+    );
+
+    expectSuccess(runInit(undefined, ['--vault', 'lat.md']));
+
+    expect(
+      JSON.parse(readFileSync(join(root, 'lat.config.json'), 'utf-8')),
+    ).toEqual({ dir: 'lat.md' });
+    expect(existsSync(join(root, 'lat.md', 'lat.md'))).toBe(true);
+  });
+
   it('persists selected agents locally and restores them on the next init', async () => {
     createLatDir();
     setInteractive(true);

@@ -8,25 +8,39 @@ import { isSourceFilePath, SOURCE_FILE_EXTENSIONS } from './source-formats.js';
 import { toPosix } from './path.js';
 import { ALWAYS_IGNORED_DIRECTORIES, walkEntries } from './walk.js';
 import type { Profiler } from './profiler.js';
+import { latticeDirName } from './project-config.js';
+
+/** Options carrying the project's vault identity. Omitted, it is derived from
+ *  `projectRoot`, so callers that already resolved the layout can pass it in
+ *  and everything else keeps working unchanged. */
+export type CodeRefOptions = {
+  /** Vault path relative to `projectRoot`, POSIX form — e.g. `lat.md` or `docs`. */
+  latticeDirRel?: string;
+};
 
 /** Glob patterns used to exclude directories/files from code-ref scanning.
  *  Shared between rg args and the TS fallback's walkFiles filter. */
-const EXCLUDE_DIRS = ['lat.md', '.claude', ...ALWAYS_IGNORED_DIRECTORIES];
+function excludeDirs(vault: string): string[] {
+  return [vault, '.claude', ...ALWAYS_IGNORED_DIRECTORIES];
+}
 const EXCLUDE_GLOBS = ['*.md', '.*', '**/.*'];
 const RG_IGNORE_ARGS = ['--no-require-git', '--ignore-file-case-insensitive'];
 
 /** Walk supported source files for code-ref scanning. Uses walkEntries for
- *  .gitignore support, then additionally skips lat.md/, .claude/, and
+ *  .gitignore support, then additionally skips the vault, .claude/, and
  *  sub-projects. */
-export async function walkFiles(dir: string): Promise<string[]> {
+export async function walkFiles(
+  dir: string,
+  vault = latticeDirName(dir),
+): Promise<string[]> {
   const entries = (await walkEntries(dir))
     .filter((path) => sep !== '/' || !path.includes('\\'))
     .map(toPosix);
 
-  // Collect directories that contain their own lat.md/ (sub-projects)
+  // Collect directories that contain their own vault (sub-projects)
   const subProjects = new Set<string>();
   for (const e of entries) {
-    const i = e.indexOf('/lat.md/');
+    const i = e.indexOf(`/${vault}/`);
     if (i !== -1) subProjects.add(e.slice(0, i + 1));
   }
 
@@ -34,7 +48,7 @@ export async function walkFiles(dir: string): Promise<string[]> {
     .filter(
       (e) =>
         isSourceFilePath(e) &&
-        !e.startsWith('lat.md/') &&
+        !e.startsWith(`${vault}/`) &&
         !e.startsWith('.claude/') &&
         ![...subProjects].some((prefix) => e.startsWith(prefix)),
     )
@@ -117,17 +131,23 @@ function tryExec(
 }
 
 /**
- * Detect sub-projects (directories containing their own lat.md/) using
- * rg --files. Finds files inside nested lat.md/ dirs and extracts the parent
+ * Detect sub-projects (directories containing their own vault) using
+ * rg --files. Finds files inside nested vault dirs and extracts the parent
  * directory paths. Returns paths relative to projectRoot.
+ *
+ * Only nested vaults sharing this project's directory name are detected — a
+ * limitation that predates configurable names and is unchanged by it.
  */
-async function findSubProjects(projectRoot: string): Promise<string[]> {
-  // List files inside any lat.md/ dir, then extract unique parent paths.
-  // The root lat.md/ is excluded by EXCLUDE_DIRS in the caller, so we only
-  // need to find nested ones here — search for files under */lat.md/.
+async function findSubProjects(
+  projectRoot: string,
+  vault: string,
+): Promise<string[]> {
+  // List files inside any vault dir, then extract unique parent paths.
+  // The root vault is excluded by the caller's exclude list, so we only
+  // need to find nested ones here — search for files under */<vault>/.
   const out = await tryExec(
     'rg',
-    ['--files', '--null', ...RG_IGNORE_ARGS, '--glob', '**/lat.md/**', '.'],
+    ['--files', '--null', ...RG_IGNORE_ARGS, '--glob', `**/${vault}/**`, '.'],
     projectRoot,
   );
   if (!out) return [];
@@ -135,21 +155,21 @@ async function findSubProjects(projectRoot: string): Promise<string[]> {
   const subProjects = new Set<string>();
   for (const rawLine of out.split('\0')) {
     if (!rawLine) continue;
-    // rg emits native separators on Windows; normalize before matching '/lat.md/'.
+    // rg emits native separators on Windows; normalize before matching.
     const line = toPosix(rawLine);
     const clean = line.startsWith('./') ? line.slice(2) : line;
     // "tests/cases/foo/lat.md/specs.md" → "tests/cases/foo"
-    // Skip root lat.md/ (no parent prefix — starts with "lat.md/")
-    const idx = clean.indexOf('/lat.md/');
+    // Skip the root vault (no parent prefix — starts with "<vault>/")
+    const idx = clean.indexOf(`/${vault}/`);
     if (idx !== -1) subProjects.add(clean.slice(0, idx));
   }
   return [...subProjects];
 }
 
-function nestedLatProjects(paths: readonly string[]): string[] {
+function nestedLatProjects(paths: readonly string[], vault: string): string[] {
   const projects = new Set<string>();
   for (const path of paths) {
-    const index = path.indexOf('/lat.md/');
+    const index = path.indexOf(`/${vault}/`);
     if (index !== -1) projects.add(path.slice(0, index));
   }
   return [...projects];
@@ -163,6 +183,7 @@ function hasDotDirectory(path: string): boolean {
 /** List readable regular source files tracked by the enclosing Git repository. */
 async function findGitTrackedSourceFiles(
   projectRoot: string,
+  vault: string,
 ): Promise<string[] | null> {
   const out = await tryExec(
     'git',
@@ -182,12 +203,12 @@ async function findGitTrackedSourceFiles(
       const path = entry.slice(tab + 1);
       return path.includes('\\') ? [] : [path];
     });
-  const subProjects = nestedLatProjects(entries);
+  const subProjects = nestedLatProjects(entries, vault);
   const candidates = entries.filter(
     (path) =>
       isSourceFilePath(path) &&
       !hasDotDirectory(path) &&
-      !path.startsWith('lat.md/') &&
+      !path.startsWith(`${vault}/`) &&
       !subProjects.some(
         (project) => path === project || path.startsWith(`${project}/`),
       ),
@@ -207,9 +228,9 @@ async function findGitTrackedSourceFiles(
 }
 
 /** Build rg glob exclusion args. */
-function rgExcludeArgs(subProjects: string[]): string[] {
+function rgExcludeArgs(subProjects: string[], vault: string): string[] {
   const args: string[] = [];
-  for (const dir of EXCLUDE_DIRS) args.push('--glob', `!${dir}/`);
+  for (const dir of excludeDirs(vault)) args.push('--glob', `!${dir}/`);
   for (const glob of EXCLUDE_GLOBS) args.push('--glob', `!${glob}`);
   for (const sp of subProjects) args.push('--glob', `!${sp}/`);
   return args;
@@ -229,14 +250,15 @@ function rgSourceIncludeArgs(): string[] {
 
 async function discoverRipgrepExcludes(
   projectRoot: string,
+  vault: string,
   profile?: Pick<Profiler, 'time'>,
 ): Promise<string[]> {
   const subProjects = await profileScan(
     profile,
     'find nested lat.md projects with ripgrep',
-    () => findSubProjects(projectRoot),
+    () => findSubProjects(projectRoot, vault),
   );
-  return rgExcludeArgs(subProjects);
+  return rgExcludeArgs(subProjects, vault);
 }
 
 function ripgrepPathBatches(paths: string[]): string[][] {
@@ -463,20 +485,22 @@ export async function hasRipgrep(): Promise<boolean> {
 export function createCodeReferenceDiscovery(
   projectRoot: string,
   profile?: Pick<Profiler, 'time'>,
+  options?: CodeRefOptions,
 ): CodeReferenceDiscovery {
+  const vault = options?.latticeDirRel ?? latticeDirName(projectRoot);
   let excludesPromise: Promise<string[]> | undefined;
   let trackedFilesPromise: Promise<string[] | null> | undefined;
   let sourceFilesPromise: Promise<string[]> | undefined;
   let scanPromise: Promise<ScanResult> | undefined;
 
   const ripgrepExcludes = () =>
-    (excludesPromise ??= discoverRipgrepExcludes(projectRoot, profile));
+    (excludesPromise ??= discoverRipgrepExcludes(projectRoot, vault, profile));
 
   const trackedFiles = () =>
     (trackedFilesPromise ??= profileScan(
       profile,
       'list tracked source files with git',
-      () => findGitTrackedSourceFiles(projectRoot),
+      () => findGitTrackedSourceFiles(projectRoot, vault),
     ));
 
   const listSourceFiles = () =>
@@ -494,7 +518,7 @@ export function createCodeReferenceDiscovery(
       }
 
       return profileScan(profile, 'walk project source files', () =>
-        walkFiles(projectRoot),
+        walkFiles(projectRoot, vault),
       );
     })());
 
@@ -524,14 +548,20 @@ export function createCodeReferenceDiscovery(
 export async function scanCodeRefs(
   projectRoot: string,
   profile?: Pick<Profiler, 'time'>,
+  options?: CodeRefOptions,
 ): Promise<ScanResult> {
-  return createCodeReferenceDiscovery(projectRoot, profile).scan();
+  return createCodeReferenceDiscovery(projectRoot, profile, options).scan();
 }
 
 /** Discover the source files that may contain code references. */
 export async function discoverSourceFiles(
   projectRoot: string,
   profile?: Pick<Profiler, 'time'>,
+  options?: CodeRefOptions,
 ): Promise<string[]> {
-  return createCodeReferenceDiscovery(projectRoot, profile).listSourceFiles();
+  return createCodeReferenceDiscovery(
+    projectRoot,
+    profile,
+    options,
+  ).listSourceFiles();
 }

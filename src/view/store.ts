@@ -77,6 +77,11 @@ import {
   type ViewReferenceIndex,
 } from './references.js';
 import { rewriteLocalFileLink } from './source-target.js';
+import {
+  latticeDirRel,
+  latticeIndexFileName,
+  latticePathPrefix,
+} from '@lat.md/core/project-discovery';
 
 const DEFAULT_DEBOUNCE_MS = 75;
 const DEFAULT_GIT_POLL_MS = 2_000;
@@ -196,13 +201,16 @@ async function loadCodeReferenceFiles(
 
 async function scanCodeState(
   projectRoot: string,
+  vaultRel: string,
   excludedPaths: readonly string[] = [],
   publishable?: (path: string) => Promise<boolean>,
 ): Promise<{
   files: Map<string, ViewCodeReferenceFile>;
   scope: Set<string>;
 }> {
-  const discovery = createCodeReferenceDiscovery(projectRoot);
+  const discovery = createCodeReferenceDiscovery(projectRoot, undefined, {
+    latticeDirRel: vaultRel,
+  });
   const [scan, sourceFiles] = await Promise.all([
     discovery.scan(),
     discovery.listSourceFiles(),
@@ -253,9 +261,9 @@ function viewIndex(
     }
   }
   const directoryName = basename(latDir);
-  const indexName = directoryName.endsWith('.md')
-    ? directoryName
-    : `${directoryName}.md`;
+  // The index file shares its directory's name; derive it the same way
+  // validation and external-source config do.
+  const indexName = latticeIndexFileName(latDir);
   const directoryOrder = Object.fromEntries(
     [...markdownFiles].flatMap(([path, file]) => {
       const separator = path.lastIndexOf('/');
@@ -496,13 +504,15 @@ export class ViewStore {
       snapshot.external,
       this.options.publishable,
     );
+    const vaultPrefix = latticePathPrefix(this.latDir, this.projectRoot);
     const rendered = await renderMarkdown(
       file.content,
       requestedPath,
       resolver,
       {
         errors: [...(snapshot.diagnostics.get(requestedPath) ?? [])],
-        rewriteMarkdownLink: (url) => rewriteLocalFileLink(url, requestedPath),
+        rewriteMarkdownLink: (url) =>
+          rewriteLocalFileLink(url, requestedPath, vaultPrefix),
       },
     );
     const errors = [...(snapshot.diagnostics.get(requestedPath) ?? [])];
@@ -518,7 +528,7 @@ export class ViewStore {
           {
             errors,
             rewriteMarkdownLink: (url) =>
-              rewriteLocalFileLink(url, requestedPath),
+              rewriteLocalFileLink(url, requestedPath, vaultPrefix),
           },
           gitTree,
         )
@@ -913,6 +923,7 @@ export class ViewStore {
     if (refreshCodeScope) {
       const nextCode = await scanCodeState(
         this.projectRoot,
+        latticeDirRel(this.latDir, this.projectRoot),
         this.options.codeExcludePaths,
         this.options.publishable,
       );
@@ -989,7 +1000,12 @@ export async function createViewStore(
     await Promise.all([
       realpath(latDir),
       listLatticeFiles(latDir),
-      scanCodeState(projectRoot, options.codeExcludePaths, options.publishable),
+      scanCodeState(
+        projectRoot,
+        latticeDirRel(latDir, projectRoot),
+        options.codeExcludePaths,
+        options.publishable,
+      ),
       options.git === false
         ? Promise.resolve(null)
         : findViewGitRepository(projectRoot, latDir),

@@ -171,7 +171,9 @@ Implementation: [[src/cli/gen.ts]]
 
 Interactive setup wizard. Walks the user through initializing lat.md in a project, with per-agent configuration for multiple coding tools.
 
-Usage: `lat init [dir]`
+Usage: `lat init [dir] [--vault <name>]`
+
+`--vault` sets the knowledge-graph directory name — see [[vault]] for the project config file it writes, the discovery rules, and why the default name writes no config file at all.
 
 Steps:
 
@@ -300,8 +302,14 @@ Defaults are `~/.config/lat/config.json` on Linux, `~/Library/Application Suppor
 
 Currently supports:
 
-- `repos` — per-repository embedding preferences keyed by absolute `lat.md/` path; `lat init` records `embedding: "local"` unless the user explicitly selects hosted embeddings
+- `repos` — per-repository embedding preferences keyed by absolute `lat.md/` path; `lat init` records `embedding: "local"` unless the user explicitly selects hosted embeddings. An entry may also carry `baseUrl` and `model` to select an explicit OpenAI-compatible endpoint, which key-prefix detection cannot identify — see [[rag-architecture#Custom endpoints]]
 - `llm_key` — optional hosted embedding API key, set manually by power users and used when `LAT_LLM_KEY` is not set
+
+Environment variables for embedding, each overriding the config file:
+
+- `LAT_LLM_BASE_URL` / `LAT_LLM_MODEL` — explicit OpenAI-compatible endpoint and model, for a run or a CI job
+- `LAT_EMBED_BATCH_TOKENS` / `LAT_EMBED_BATCH` — request batch bounds, the escape hatch when one batch exceeds a provider's tokens-per-minute limit
+- `LAT_EMBED_RATE_LIMIT_RETRIES` / `LAT_EMBED_RATE_LIMIT_WAIT_MS` — retry budget and fallback wait for a `429`. [[rag-architecture#Rate limits]] documents the defaults
 
 Key resolution order: `LAT_LLM_KEY` > `LAT_LLM_KEY_FILE` > `LAT_LLM_KEY_HELPER` > config file `llm_key`. This applies to `lat search`, `lat reindex`, `lat init`, and the MCP `lat_search` tool.
 

@@ -2,9 +2,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { homedir } from 'node:os';
 import { parse } from 'yaml';
-import { getConfigPath } from '../config.js';
+import { getConfigPath, getRemoteSelection } from '../config.js';
 import { managedCacheBase, managedCacheRoot } from '../cache-path.js';
-import { findLatticeDir } from '../project-discovery.js';
+import {
+  findLatticeDir,
+  latticeIndexFileName,
+  projectConfigError,
+} from '../project-discovery.js';
+import { latticeDirName } from '../project-config.js';
 
 /** Describe storage without creating caches, resolving credentials, or invoking Git. */
 export function pathsCommand(options: {
@@ -62,9 +67,18 @@ export function pathsCommand(options: {
     entry('Documentation', latDir, 'Project knowledge graph.');
     entry(
       'Project config',
-      join(latDir, 'lat.md'),
+      join(latDir, latticeIndexFileName(latDir)),
       'Canonical external-source configuration in document frontmatter.',
     );
+    // An explicit endpoint silently replaces key-prefix detection, so which one
+    // is in effect is not otherwise visible.
+    const remote = getRemoteSelection(latDir);
+    if (remote.baseUrl || remote.model) {
+      lines.push(
+        `- **Embedding endpoint:** ${code(`${remote.baseUrl ?? '<unset>'} — model ${remote.model ?? '<unset>'}`)}`,
+        '  Explicit OpenAI-compatible endpoint. LAT_LLM_BASE_URL and LAT_LLM_MODEL override the repo config.',
+      );
+    }
     const localConfig = join(latDir, 'config.local.yaml');
     entry(
       'Local config',
@@ -174,7 +188,19 @@ export function pathsCommand(options: {
       );
     }
   } else {
-    lines.push('', 'No lat.md directory found; project paths are unavailable.');
+    lines.push(
+      '',
+      `No ${latticeDirName(resolve(options.dir ?? process.cwd()))} directory found; project paths are unavailable.`,
+    );
+  }
+  // This command works outside a project, so it has no failure path of its own;
+  // report a broken configuration here rather than silently describing the
+  // fallback vault. "Which vault is in effect" is the question it answers.
+  {
+    const configError = projectConfigError(
+      resolve(options.dir ?? process.cwd()),
+    );
+    if (configError) lines.push('', `Error: ${configError}`);
   }
   return lines.join('\n');
 }

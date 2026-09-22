@@ -41,6 +41,7 @@ export async function indexSections(
   embedder: Embedder,
   onProgress?: (done: number, total: number) => void,
   analyzedProject?: MarkdownProjectAnalysis,
+  onNotice?: (message: string) => void,
 ): Promise<IndexStats> {
   const project =
     analyzedProject ??
@@ -135,6 +136,7 @@ export async function indexSections(
     ? await embedder.embed(
         entries.map(([, input]) => input),
         onProgress,
+        onNotice,
       )
     : [];
   if (

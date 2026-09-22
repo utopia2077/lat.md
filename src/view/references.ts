@@ -22,6 +22,7 @@ import type {
   ViewSourceReference,
 } from './protocol.js';
 import { viewSourceTarget, rewriteLocalFileLink } from './source-target.js';
+import { latticePathPrefix } from '@lat.md/core/project-discovery';
 import { documentUrl as routeDocumentUrl } from './document-route.js';
 
 export type SourceReferenceOrigin = {
@@ -68,8 +69,12 @@ export function parseViewMarkdownFile(
   return analyzeMarkdownFile(absolutePath, content, latDir, projectRoot);
 }
 
-function contextMarkdownLink(requestedPath: string, url: string): string {
-  return rewriteLocalFileLink(url, requestedPath);
+function contextMarkdownLink(
+  requestedPath: string,
+  url: string,
+  vaultPrefix: string,
+): string {
+  return rewriteLocalFileLink(url, requestedPath, vaultPrefix);
 }
 
 function documentUrl(
@@ -480,7 +485,11 @@ async function renderIndexedMarkdownReference(
         activeMarkdownLink: reference.activeMarkdownLink,
         lineOffset: reference.paragraph.startLine - 1,
         rewriteMarkdownLink: (url) =>
-          contextMarkdownLink(reference.sourcePath, url),
+          contextMarkdownLink(
+            reference.sourcePath,
+            url,
+            latticePathPrefix(latDir, projectRoot),
+          ),
       },
     )
   ).tree;

@@ -47,6 +47,7 @@ import {
 import { buildViewTableOfContents } from './table-of-contents.js';
 import { viewSourceTarget } from './source-target.js';
 import { documentUrl } from './document-route.js';
+import { latticeDirRel } from '@lat.md/core/project-discovery';
 
 export class ViewDocumentNotFoundError extends Error {}
 export class ViewSourceNotFoundError extends Error {}
@@ -358,7 +359,7 @@ export async function getViewExternal(
   if (resolved.kind === 'document') {
     const virtualPath = join(
       projectRoot,
-      'lat.md',
+      latticeDirRel(latDir, projectRoot),
       '.external',
       resolved.target.handle,
       resolved.target.resolvedPath,

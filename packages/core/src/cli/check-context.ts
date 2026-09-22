@@ -7,6 +7,7 @@ import {
   type SectionSlugIndex,
 } from '../lattice-model.js';
 import { scanCodeRefs, type ScanResult } from '../code-refs.js';
+import { latticeDirRel } from '../project-discovery.js';
 import {
   SourceParserRuntime,
   type ResolveSourceSymbolOptions,
@@ -308,7 +309,10 @@ export class CheckRunContext {
   codeRefs(): Promise<ScanResult> {
     this.codeRefsPromise ??= this.time(
       'scan project files for @lat references',
-      () => scanCodeRefs(this.projectRoot, this.profile),
+      () =>
+        scanCodeRefs(this.projectRoot, this.profile, {
+          latticeDirRel: latticeDirRel(this.latticeDir, this.projectRoot),
+        }),
     );
     return this.codeRefsPromise;
   }

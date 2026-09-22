@@ -59,7 +59,7 @@ Parser cache version 3 invalidates identities produced before formatted heading 
 
 ## Short Ref Resolution
 
-References can use just the file name (without directory path) when the name is unique across the vault. Short refs only work for markdown files in `lat.md/`; source code references always require the full path.
+References can use just the file name (without directory path) when the name is unique across the vault. Short refs only work for markdown files in the vault; source code references always require the full path.
 
 For example, `[[search#Provider Detection]]` resolves to `lat.md/tests/search#Search Tests#Provider Detection` if there's only one `search.md` in the vault. If multiple files share the same name, the full path is required — `lat check` reports ambiguous refs as errors.
 

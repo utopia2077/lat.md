@@ -134,7 +134,7 @@ function buildTree(
     externalPathTarget?: string;
   }>,
   directoryOrder: ViewIndex['directoryOrder'] = {},
-  entry = 'lat.md',
+  entry = '',
 ): FileTreeNode[] {
   const root = new Map<string, MutableNode>();
 
@@ -178,7 +178,7 @@ function buildTree(
 export function buildFileTree(
   files: string[],
   directoryOrder: ViewIndex['directoryOrder'] = {},
-  entry = 'lat.md',
+  entry = '',
 ): FileTreeNode[] {
   return buildTree(
     files.map((path) => ({ path })),

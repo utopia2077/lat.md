@@ -2,7 +2,11 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
 import { dirname } from 'node:path';
-import { findLatticeDir } from '@lat.md/core/project-discovery';
+import {
+  findLatticeDir,
+  projectConfigError,
+} from '@lat.md/core/project-discovery';
+import { latticeDirName } from '@lat.md/core/project-config';
 import {
   plainStyler,
   type CmdContext,
@@ -30,8 +34,17 @@ function toMcp(result: CmdResult) {
 
 export async function startMcpServer(): Promise<void> {
   const latDir = findLatticeDir();
+  const configError = projectConfigError(
+    latDir ? dirname(latDir) : process.cwd(),
+  );
+  if (configError) {
+    process.stderr.write(`${configError}\n`);
+    process.exit(1);
+  }
   if (!latDir) {
-    process.stderr.write('No lat.md directory found\n');
+    process.stderr.write(
+      `No ${latticeDirName(process.cwd())} directory found\n`,
+    );
     process.exit(1);
   }
   const projectRoot = dirname(latDir);
