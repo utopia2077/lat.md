@@ -309,7 +309,18 @@ describe('excluded vault paths', () => {
 
   // @lat: [[tests/project-config#Project Configuration#Excluded vault paths#Normalizes equivalent spellings of an excluded path]]
   it('normalizes equivalent spellings of an excluded path', async () => {
-    for (const spelling of ['private', 'private/', './private', ' ./private/ ']) {
+    for (const spelling of [
+      'private',
+      'private/',
+      './private',
+      ' ./private/ ',
+      // Windows separators and redundant separators are accepted by the
+      // validator, which splits on both — so they must canonicalize too, or the
+      // rule validates and then matches nothing.
+      'private\\',
+      '.\\private',
+      './private//',
+    ]) {
       const root = await createProject({
         ...vaultWithExclusions(),
         'lat.config.json': JSON.stringify({

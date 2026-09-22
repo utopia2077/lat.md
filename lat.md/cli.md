@@ -177,18 +177,18 @@ Usage: `lat init [dir] [--vault <name>]`
 
 Steps:
 
-1. **lat.md/ directory** — if not present, asks whether to create it (via a one-off readline interface that is closed before step 2). Scaffolds from `templates/init/` (`.gitignore` and `README.md`). If it already exists, skips ahead.
+1. **Vault directory** — the name comes from `--vault`, else the config file, else `lat.md`. If not present, asks whether to create it (via a one-off readline interface that is closed before step 2) and scaffolds from `templates/init/` (`.gitignore` and the index file, whose name follows the vault). If it already exists, skips ahead and reports whether its index file is in place.
 2. **Embedding setup** — fresh and outdated setups default to a per-repository local preference before agent selection, unless the repo already has a _working_ hosted setup (a hosted `meta.embedding_model` plus a resolvable key for the same provider and model). That exception matters because the outdated check re-fires on every `INIT_VERSION` bump, so pinning local unconditionally would keep undoing a deliberate hosted choice; a hosted index with no compatible key is unusable, so it does fall back to local. In a TTY, if a key resolves from `LAT_LLM_KEY`, `LAT_LLM_KEY_FILE`, `LAT_LLM_KEY_HELPER`, or user config, init asks whether to stay local or use hosted embeddings; fresh repos default local, while re-runs default to their existing backend. When that choice differs from `meta.embedding_model`, including a change between hosted providers, interactive init offers to reindex immediately. Non-interactive init never chooses: it applies the local default only where no working hosted setup exists, and prints the required command for any mismatch.
 3. **Agent selection** — interactive checklist menu ([[src/cli/checklist-menu.ts#checklistMenu]]). All agents are shown at once with `[x]`/`[ ]` checkboxes; the cursor row is highlighted with `chalk.bgCyan`. Keys: up/down (j/k) to move, Space to toggle, Enter to confirm, Ctrl+C to abort. Returns an array of selected agent values. Non-TTY fallback returns `[]`. After confirmation, prints a summary line (e.g. "Selected: Claude Code, Cursor" or dim "None"). **Important:** the persistent readline interface is created _after_ this step — `checklistMenu` puts stdin into raw mode with its own `data` listener, which corrupts any co-existing readline interface.
 4. **Command style** — if any agent is selected, a `selectMenu` asks "How should agents run lat?" with three options: `lat` (global install, portable), the resolved local invocation, or `npx lat.md@latest` (slow but zero-install). Local JavaScript builds retain the exact Node executable that launched init, and TypeScript entry points also retain their loader flags; wrapper scripts and standalone binaries remain direct commands. The choice determines hook commands and structured executable/argument descriptors for MCP and generated tools. Non-interactive mode defaults to `local`. Global and npx commands are portable on Unix; Windows generated tools use explicit Node entry points to avoid shell wrappers.
 5. **AGENTS.md** — created if a non-Claude agent is selected (Cursor, Copilot, Codex). Shared instruction file. Uses marker-based append mode (see below).
 6. **Per-agent setup** — configures each selected agent (see subsections below). Each step prints a brief explanation of _why_ it's needed (e.g. why a hook is used instead of CLAUDE.md, why MCP is registered alongside CLI access).
-7. **Version stamp + file hashes** — writes `INIT_VERSION` and SHA-256 hashes of all template-generated files to `lat.md/.cache/lat_init.json`. The version is also stamped when no agents are selected, because embedding setup has completed and must not be treated as fresh on the next run. On re-run, compares current file content against stored hashes: unmodified files are silently updated to the latest template; user-modified files trigger a Y/n prompt offering to overwrite with the latest template, declining suggests [[cli#gen]].
+7. **Version stamp + file hashes** — writes `INIT_VERSION` and SHA-256 hashes of all template-generated files to `<vault>/.cache/lat_init.json`. The version is also stamped when no agents are selected, because embedding setup has completed and must not be treated as fresh on the next run. On re-run, compares current file content against stored hashes: unmodified files are silently updated to the latest template; user-modified files trigger a Y/n prompt offering to overwrite with the latest template, declining suggests [[cli#gen]].
 8. **Next steps** — after all setup completes, prints agent-specific guidance for having the agent document the codebase. For Claude Code, shows a runnable `claude "..."` command. For IDE agents (Cursor, Copilot, Pi, OpenCode, Codex), shows the prompt to paste into agent chat. Both suggest running `lat check` when done.
 
 Initialization also adds `.lat-build` to the project-level `.gitignore`, keeping Lat's default static and Node-server outputs out of version control. Platform-specific output remains the project's responsibility.
 
-Completed interactive setup stores selected agent IDs under `init.agents` in the ignored `lat.md/config.local.yaml`. Subsequent checklists preselect those agents; unknown IDs are ignored. An explicitly empty selection is saved, while canceled setup and non-interactive runs leave preferences unchanged. Deselecting an agent does not uninstall its existing integration.
+Completed interactive setup stores selected agent IDs under `init.agents` in the ignored `<vault>/config.local.yaml`. Subsequent checklists preselect those agents; unknown IDs are ignored. An explicitly empty selection is saved, while canceled setup and non-interactive runs leave preferences unchanged. Deselecting an agent does not uninstall its existing integration.
 
 [[src/cli/init-preferences.ts]] updates only this preference, preserving external-source overrides, unrelated settings, and YAML comments. Invalid YAML or preference shapes produce an error instead of overwriting the file. Existing setups without a saved selection start unchecked.
 
@@ -290,7 +290,7 @@ Print resolved configuration, cache, and project storage locations as Markdown h
 
 `lat paths --config` prints only the user configuration file location and existence status. The previous `lat config` command remains a hidden compatibility alias. Neither command displays secrets or runs credential helpers.
 
-`--dir` selects the project. Project output includes canonical and local configuration, configured local external working trees, the managed Git cache, parsed results, and downloaded external files. The full CLI also lists search databases and locks, initialization state, and default UI build outputs. Transient implementation storage is omitted. `lat-core paths` lists only core storage.
+`--dir` selects the project. Project output includes canonical and local configuration, the embedding endpoint when one is selected, configured local external working trees, the managed Git cache, parsed results, and downloaded external files. It reports a broken project configuration as an `Error:` line while still exiting 0, because answering "which vault is in effect" is its job and it works outside a project too. The full CLI also lists search databases and locks, initialization state, and default UI build outputs. Transient implementation storage is omitted. `lat-core paths` lists only core storage.
 
 Implementation: [[packages/core/src/cli/paths.ts#pathsCommand]]
 
@@ -302,14 +302,14 @@ Defaults are `~/.config/lat/config.json` on Linux, `~/Library/Application Suppor
 
 Currently supports:
 
-- `repos` — per-repository embedding preferences keyed by absolute `lat.md/` path; `lat init` records `embedding: "local"` unless the user explicitly selects hosted embeddings. An entry may also carry `baseUrl` and `model` to select an explicit OpenAI-compatible endpoint, which key-prefix detection cannot identify — see [[rag-architecture#Custom endpoints]]
+- `repos` — per-repository embedding preferences keyed by the absolute vault path (`<project>/docs` for a configured vault); `lat init` records `embedding: "local"` unless the user explicitly selects hosted embeddings. An entry may also carry `baseUrl` and `model` to select an explicit OpenAI-compatible endpoint, which key-prefix detection cannot identify — see [[rag-architecture#Custom endpoints]]. No command writes those two fields: set them by editing the config file (the environment variables override them per run).
 - `llm_key` — optional hosted embedding API key, set manually by power users and used when `LAT_LLM_KEY` is not set
 
-Environment variables for embedding, each overriding the config file:
+Environment variables for embedding, each overriding the config file. `LAT_DIR` names the vault directory itself — see [[vault#Discovery]]:
 
 - `LAT_LLM_BASE_URL` / `LAT_LLM_MODEL` — explicit OpenAI-compatible endpoint and model, for a run or a CI job
 - `LAT_EMBED_BATCH_TOKENS` / `LAT_EMBED_BATCH` — request batch bounds, the escape hatch when one batch exceeds a provider's tokens-per-minute limit
-- `LAT_EMBED_RATE_LIMIT_RETRIES` / `LAT_EMBED_RATE_LIMIT_WAIT_MS` — retry budget and fallback wait for a `429`. [[rag-architecture#Rate limits]] documents the defaults
+- `LAT_EMBED_RATE_LIMIT_RETRIES` / `LAT_EMBED_RATE_LIMIT_WAIT_MS` — retry budget (default 5) and fallback wait (default 60s) for a `429`. [[rag-architecture#Rate limits]] documents the behavior
 
 Key resolution order: `LAT_LLM_KEY` > `LAT_LLM_KEY_FILE` > `LAT_LLM_KEY_HELPER` > config file `llm_key`. This applies to `lat search`, `lat reindex`, `lat init`, and the MCP `lat_search` tool.
 
@@ -395,7 +395,7 @@ authoritative.
 - **Fresh index** (no `meta` yet — first run, the regenerable `.cache` was wiped, or a legacy
   `.cache` from a version that never recorded the model) — a durable per-repo preference wins first:
   [[cli#init]] defaults new repositories to local and asks before using an available hosted key;
-  [[cli#reindex]] maintains explicit backend changes in the config's `repos` map, keyed by lat.md
+  [[cli#reindex]] maintains explicit backend changes in the config's `repos` map, keyed by the vault path
   dir. A local preference rebuilds locally and ignores any key. Repositories without a preference
   decide from the environment (key → hosted, else local). The resulting model is recorded in `meta`
   only after the index build succeeds, so a failed build never pins a broken backend. A legacy

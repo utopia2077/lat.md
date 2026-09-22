@@ -74,7 +74,7 @@ Maintainers build and test the artifact with `pnpm build:action` and `pnpm test:
 
 ## How it works
 
-Run `lat init` to scaffold the vault directory (`lat init --vault docs` to use an existing `docs/`), then write markdown files describing your architecture, business logic, test specs — whatever matters. Link between sections using `[[file#Section#Subsection]]` syntax. Link to source code symbols with `[[src/auth.ts#validateToken]]`. Annotate source code with `// @lat: [[section-id]]` (or `# @lat: [[section-id]]` in Python and PHP) comments to tie implementation back to concepts.
+Run `lat init` to scaffold the vault directory (`lat init --vault docs` to use or create a `docs/`), then write markdown files describing your architecture, business logic, test specs — whatever matters. Link between sections using `[[file#Section#Subsection]]` syntax. Link to source code symbols with `[[src/auth.ts#validateToken]]`. Annotate source code with `// @lat: [[section-id]]` (or `# @lat: [[section-id]]` in Python and PHP) comments to tie implementation back to concepts.
 
 ```
 my-project/
@@ -137,7 +137,7 @@ Providers that rate-limit by tokens per minute answer `429`; indexing waits out 
 }
 ```
 
-`exclude` entries are relative to the vault; naming a directory keeps its whole subtree out of validation, search, and the exported site. Without a config file the vault stays `lat.md/`.
+`exclude` entries are relative to the vault; naming a directory keeps its whole subtree out of validation, search, and the exported site. Without a config file the vault stays `lat.md/`. `LAT_DIR` overrides the name for a single run (CI, one-off commands); an invalid value is refused rather than honored.
 
 ## Development
 

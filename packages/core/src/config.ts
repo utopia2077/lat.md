@@ -105,10 +105,21 @@ export function getRemoteSelection(latDir?: string): {
   baseUrl?: string;
   model?: string;
 } {
+  // The endpoint and its model are one setting. A model id on its own names
+  // nothing to talk to, so it must not shadow a repo-configured endpoint — that
+  // would send a gateway key to the provider the key prefix implies.
+  const baseUrl = process.env.LAT_LLM_BASE_URL?.trim();
+  if (baseUrl) return { baseUrl, model: process.env.LAT_LLM_MODEL?.trim() };
+  return latDir ? (getRepoPreference(latDir) ?? {}) : {};
+}
+
+/** Problem with the embedding environment variables, or null. */
+export function embeddingEnvError(): string | null {
   const baseUrl = process.env.LAT_LLM_BASE_URL?.trim();
   const model = process.env.LAT_LLM_MODEL?.trim();
-  if (baseUrl || model) return { baseUrl, model };
-  return latDir ? (getRepoPreference(latDir) ?? {}) : {};
+  if (!baseUrl && model)
+    return 'LAT_LLM_MODEL is set without LAT_LLM_BASE_URL — an endpoint and its model are configured together.';
+  return null;
 }
 
 // ── Centralized LLM key resolution ─────────────────────────────────

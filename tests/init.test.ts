@@ -45,6 +45,7 @@ const seedDbPath = join(import.meta.dirname, 'support', 'seed-model.mjs');
 const {
   closeDb,
   ensureMeta,
+  embeddingEnvError,
   getLlmKey,
   getRemoteSelection,
   getRepoEmbedding,
@@ -56,6 +57,7 @@ const {
 } = vi.hoisted(() => ({
   closeDb: vi.fn(async () => {}),
   ensureMeta: vi.fn(async () => {}),
+  embeddingEnvError: vi.fn(() => null),
   getLlmKey: vi.fn(),
   getRepoEmbedding: vi.fn(),
   // Resolving the embedder consults the endpoint selection; without it the
@@ -69,6 +71,7 @@ const {
 }));
 
 vi.mock('@lat.md/core/config', () => ({
+  embeddingEnvError,
   getLlmKey,
   getRemoteSelection,
   getRepoEmbedding,
@@ -272,7 +275,6 @@ describe('lat init embedding setup', () => {
   });
 
   // @lat: [[init#Agent preferences#Remembers completed selections]]
-  // @lat: [[vault#Init]]
   it('records a custom vault directory and renames the scaffolded index', () => {
     const result = runInit(undefined, ['--vault', 'docs']);
     expectSuccess(result);
@@ -293,7 +295,6 @@ describe('lat init embedding setup', () => {
     expect(existsSync(join(root, 'lat.config.json'))).toBe(false);
   });
 
-  // @lat: [[vault#Init]]
   it('switches a renamed project back to the default vault', () => {
     // Renaming back has to be recorded too, or the config keeps pointing at the
     // old directory and the new vault is unreachable.
@@ -578,6 +579,58 @@ describe('lat init embedding setup', () => {
   });
 
   // @lat: [[init#Embedding setup#Hosted re-run defaults to hosted]]
+  // @lat: [[rag-architecture#Custom endpoints]]
+  it('leaves a hosted repo alone when its endpoint cannot be reached', async () => {
+    setInteractive(false);
+    writeOutdatedInitMeta();
+    mockStoredModel('custom:old-embed:4');
+    getLlmKey.mockReturnValue('sk-test');
+    // The configured model differs from the recorded one, so the width cannot
+    // be reused and the endpoint really is contacted — and refuses. That
+    // stands in for a transient outage: it says nothing about whether the
+    // configured endpoint works.
+    getRemoteSelection.mockReturnValue({
+      baseUrl: 'http://127.0.0.1:1/v1',
+      model: 'tiny-embed',
+    });
+
+    await initCmd(root);
+
+    // Pinning local here would silently discard a working gateway.
+    expect(setRepoEmbedding).not.toHaveBeenCalled();
+    expect(readRepoEmbedding()).toBeUndefined();
+  });
+
+  // @lat: [[rag-architecture#Custom endpoints]]
+  it('recognizes a reachable endpoint without contacting it when the width is known', async () => {
+    setInteractive(false);
+    writeOutdatedInitMeta();
+    mockStoredModel('custom:tiny-embed:4');
+    getLlmKey.mockReturnValue('sk-test');
+    // Same model as the index recorded, so its width is reused and no request
+    // is made — the resolution must still recognize the working setup.
+    getRemoteSelection.mockReturnValue({
+      baseUrl: 'http://127.0.0.1:1/v1',
+      model: 'tiny-embed',
+    });
+
+    await initCmd(root);
+
+    expect(setRepoEmbedding).not.toHaveBeenCalled();
+    expect(reindexCommand).not.toHaveBeenCalled();
+  });
+
+  it('still pins local when the key itself is unusable', async () => {
+    setInteractive(false);
+    writeOutdatedInitMeta();
+    mockStoredModel('openai:1536');
+    getLlmKey.mockReturnValue('sk-ant-not-an-embedding-provider');
+
+    await initCmd(root);
+
+    expect(setRepoEmbedding).toHaveBeenCalledWith(latDir(), 'local');
+  });
+
   it('defaults an interactive hosted re-run to its existing backend', async () => {
     createLatDir();
     writeInitMeta(latDir(), {});

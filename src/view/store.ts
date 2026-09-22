@@ -78,6 +78,7 @@ import {
 } from './references.js';
 import { rewriteLocalFileLink } from './source-target.js';
 import {
+  isExcludedVaultPath,
   latticeDirRel,
   latticeIndexFileName,
   latticePathPrefix,
@@ -609,6 +610,12 @@ export class ViewStore {
   }
 
   async getDocumentResource(requestedPath: string): Promise<Buffer> {
+    // The live server sets no publication policy, so excluded resources would
+    // otherwise be served here even though the graph does not contain them.
+    if (isExcludedVaultPath(this.latDir, requestedPath))
+      throw new ViewDocumentNotFoundError(
+        `Resource is excluded from the graph: ${requestedPath}`,
+      );
     if (
       this.options.publishable &&
       !(await this.options.publishable(

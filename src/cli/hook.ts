@@ -3,6 +3,7 @@ import { lstatSync, readFileSync } from 'node:fs';
 import { dirname, extname, join } from 'node:path';
 import {
   findLatticeDir,
+  latticeExcludePaths,
   latticePathPrefix,
 } from '@lat.md/core/project-discovery';
 import { plainStyler, type CmdContext } from '@lat.md/core/context';
@@ -225,10 +226,20 @@ function countUntrackedFileLines(projectRoot: string, file: string): number {
 export function analyzeDiff(
   projectRoot: string,
   vaultPrefix = 'lat.md/',
+  /** Vault-relative paths the project config keeps out of the graph. */
+  excluded: readonly string[] = [],
 ): {
   codeLines: number;
   latMdLines: number;
 } {
+  // Excluded paths are not part of the graph, so churn in them is neither vault
+  // nor code churn — counting it as vault churn would suppress the sync
+  // reminder for real documentation drift.
+  const excludedPrefixes = excluded.map((path) => `${vaultPrefix}${path}`);
+  const isExcluded = (path: string): boolean =>
+    excludedPrefixes.some(
+      (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+    );
   let codeLines = 0;
   let latMdLines = 0;
 
@@ -254,7 +265,9 @@ export function analyzeDiff(
       if (parts.length < 3) continue;
       const added = parseInt(parts[0], 10) || 0;
       const removed = parseInt(parts[1], 10) || 0;
-      const kind = diffFileKind(parts[2], vaultPrefix);
+      const kind = isExcluded(parts[2])
+        ? null
+        : diffFileKind(parts[2], vaultPrefix);
       if (kind) tally(kind, added + removed);
     }
   } catch {
@@ -274,7 +287,7 @@ export function analyzeDiff(
     );
     for (const file of output.split('\0')) {
       if (!file) continue;
-      const kind = diffFileKind(file, vaultPrefix);
+      const kind = isExcluded(file) ? null : diffFileKind(file, vaultPrefix);
       if (!kind) continue;
       tally(kind, countUntrackedFileLines(projectRoot, file));
     }
@@ -312,7 +325,11 @@ async function getStopStatus(latDir: string): Promise<StopStatus> {
     sectionErrors.length;
   const checkFailed = totalErrors > 0;
 
-  const { codeLines, latMdLines } = analyzeDiff(projectRoot, vault);
+  const { codeLines, latMdLines } = analyzeDiff(
+    projectRoot,
+    vault,
+    latticeExcludePaths(latDir),
+  );
   let needsSync = false;
   if (codeLines >= DIFF_THRESHOLD && latMdLines < LATMD_UPPER_THRESHOLD) {
     const effectiveLatMd = latMdLines === 0 ? 0 : Math.max(latMdLines, 1);

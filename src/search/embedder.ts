@@ -91,10 +91,12 @@ export class ReindexRequiredError extends Error {
 export async function embedderFromEnv(
   latDir?: string,
   createSearchEngine: CreateSearchEngine = defaultCreateSearchEngine,
+  /** Recorded model of an existing index, so its vector width can be reused. */
+  storedModel: string | null = null,
 ): Promise<Embedder> {
   const key = getLlmKey();
   return key
-    ? createSearchEngine(key, selectionFor(latDir, null))
+    ? createSearchEngine(key, selectionFor(latDir, storedModel))
     : createSearchEngine();
 }
 

@@ -65,6 +65,13 @@ export type RemoteProvider = {
   model: string;
   /** Known width for a built-in provider; probed on first use when absent. */
   dimensions?: number;
+  /**
+   * Set only when the endpoint itself identifies the vectors, so the index
+   * fingerprint must cover it. A built-in provider's apiBase is a constant, and
+   * folding it in would change the fingerprint and force every existing hosted
+   * index to be re-embedded for no benefit.
+   */
+  endpointIsIdentity?: boolean;
   headers: (key: string) => Record<string, string>;
 };
 
@@ -158,6 +165,7 @@ export function detectProvider(
       apiBase: baseUrl.replace(/\/+$/, ''),
       model,
       // Unknown width: gateways serve many models with different dimensions.
+      endpointIsIdentity: true,
       headers: bearerHeaders,
     };
   }
@@ -295,10 +303,13 @@ export async function createRemoteEmbedder(
     name: provider.name,
     dimensions,
     maxInputTokens: MAX_INPUT_TOKENS,
-    // Endpoint identity participates in the index fingerprint: pointing the
+    // A custom endpoint participates in the index fingerprint: pointing the
     // same model name at a different gateway must force a reindex rather than
-    // silently mixing vectors from two services.
-    tokenizerFingerprint: `cl100k_base:v1@${provider.apiBase}`,
+    // silently mixing vectors from two services. Built-in providers keep the
+    // bare fingerprint, so upgrading does not invalidate their indexes.
+    tokenizerFingerprint: provider.endpointIsIdentity
+      ? `cl100k_base:v1@${provider.apiBase}`
+      : 'cl100k_base:v1',
     countTokens: (text) => encoding().encode(text, [], []).length,
     embed: (texts, onProgress, onNotice) =>
       texts.length

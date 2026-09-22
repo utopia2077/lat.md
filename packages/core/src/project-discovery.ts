@@ -1,6 +1,7 @@
 import { statSync } from 'node:fs';
 import { basename, dirname, join, relative, resolve } from 'node:path';
 import { toPosix } from './path.js';
+import { embeddingEnvError } from './config.js';
 import {
   LAT_CONFIG_FILE,
   latDirEnvError,
@@ -82,6 +83,17 @@ export function latticePathPrefix(
 }
 
 /**
+ * True for a vault-relative path the project config excludes, or anything
+ * beneath it. For consumers that match paths one at a time rather than pruning
+ * a directory during a walk.
+ */
+export function isExcludedVaultPath(latDir: string, path: string): boolean {
+  return latticeExcludePaths(latDir).some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+  );
+}
+
+/**
  * Name of a directory's index file: the directory's own name plus `.md`
  * (unless it already ends in `.md`). `checkIndex` validates that this file
  * exists and lists every sibling, so every consumer that needs to locate the
@@ -98,7 +110,7 @@ export function latticeIndexFileName(latDir: string): string {
  * malformed config file or an unusable `LAT_DIR` override.
  */
 export function projectConfigError(projectRoot: string): string | null {
-  const envError = latDirEnvError();
+  const envError = latDirEnvError() ?? embeddingEnvError();
   if (envError) return envError;
   const { error } = readLatProjectConfig(projectRoot);
   return error ? `${join(projectRoot, LAT_CONFIG_FILE)}: ${error}` : null;

@@ -125,9 +125,9 @@ export function readLatProjectConfig(
 
 /**
  * Vault directory name for `projectRoot`: the `LAT_DIR` override wins, then the
- * project config, then the historical default. Never throws — hook and MCP
- * paths must survive a typo in the config file; the CLI entry points surface
- * {@link readLatProjectConfig}'s error instead.
+ * project config, then the historical default. Never throws, so an agent hook
+ * survives a typo in the config file; command entry points surface the problem
+ * through {@link projectConfigError} instead.
  */
 export function latticeDirName(projectRoot: string): string {
   const override = process.env[LAT_DIR_ENV]?.trim();

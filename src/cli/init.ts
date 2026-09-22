@@ -21,9 +21,11 @@ import {
 } from './gen.js';
 import {
   getLlmKey,
+  getRemoteSelection,
   getRepoEmbedding,
   setRepoEmbedding,
 } from '@lat.md/core/config';
+import { detectProvider } from '@lat.md/embed';
 import { makeStyler } from '@lat.md/core/cli/context';
 import { closeDb, getStoredModel, openDb } from '../search/db.js';
 import { embedderFromEnv, modelKey } from '../search/embedder.js';
@@ -40,6 +42,7 @@ import {
   DEFAULT_LATTICE_DIR_NAME,
   LAT_CONFIG_FILE,
   latticeIndexFileName,
+  projectConfigError,
   readLatProjectConfig,
   validateLatticeDirName,
 } from '@lat.md/core/project-discovery';
@@ -1193,25 +1196,8 @@ async function setupEmbeddingsForInit(
   interactive: boolean,
   configureDefault: boolean,
 ): Promise<void> {
-  let key: string | undefined;
-  let remoteModel: string | null = null;
-  try {
-    key = getLlmKey();
-    // Resolve through the same path `lat search` uses. Building the embedder
-    // from the bare key would ignore a configured OpenAI-compatible endpoint,
-    // report a gateway key as an unusable provider, and then pin the repo to
-    // local embeddings — silently undoing a working hosted setup.
-    if (key) remoteModel = modelKey(await embedderFromEnv(latDir));
-  } catch (err) {
-    key = undefined;
-    console.log('');
-    console.log(
-      styleText('yellow', 'Embedding key unavailable:') +
-        ' ' +
-        (err as Error).message,
-    );
-  }
-
+  // Read the index first: its recorded model lets the resolution below reuse a
+  // known vector width instead of probing the endpoint over the network.
   let storedModel: string | null = null;
   try {
     storedModel = await readStoredEmbeddingModel(latDir);
@@ -1219,6 +1205,45 @@ async function setupEmbeddingsForInit(
     console.log('');
     console.log(
       styleText('yellow', 'Could not inspect the existing search index:') +
+        ' ' +
+        (err as Error).message,
+    );
+  }
+
+  let key: string | undefined;
+  let remoteModel: string | null = null;
+  /** The key resolved, but the endpoint could not be reached to confirm it. */
+  let remoteUnverified = false;
+  try {
+    key = getLlmKey();
+    if (key) {
+      // Resolve through the same path `lat search` uses. Building the embedder
+      // from the bare key would ignore a configured OpenAI-compatible endpoint
+      // and report a gateway key as an unusable provider.
+      //
+      // Provider resolution is pure, so a failure here is a fact about the
+      // configuration: the key really is unusable. Everything after it touches
+      // the network and can fail transiently, which is a different thing.
+      detectProvider(key, getRemoteSelection(latDir));
+      try {
+        remoteModel = modelKey(
+          await embedderFromEnv(latDir, undefined, storedModel),
+        );
+      } catch (err) {
+        remoteUnverified = true;
+        console.log('');
+        console.log(
+          styleText('yellow', 'Could not verify the embedding endpoint:') +
+            ' ' +
+            (err as Error).message,
+        );
+      }
+    }
+  } catch (err) {
+    key = undefined;
+    console.log('');
+    console.log(
+      styleText('yellow', 'Embedding key unavailable:') +
         ' ' +
         (err as Error).message,
     );
@@ -1245,6 +1270,10 @@ async function setupEmbeddingsForInit(
   // hosted index with no key is unusable, so that one does fall back to local.
   const workingHosted =
     existingBackend === 'remote' && remoteModel === storedModel;
+  // An unreachable endpoint says nothing about whether the hosted setup works.
+  // Pinning local here would discard a working gateway over a transient
+  // failure, so the backend is left exactly as the repo recorded it.
+  const preserveHosted = remoteUnverified && existingBackend === 'remote';
   let backend: EmbeddingBackend;
   let configuredNow = false;
   if (key && interactive) {
@@ -1276,7 +1305,7 @@ async function setupEmbeddingsForInit(
     backend = selected as EmbeddingBackend;
     setRepoEmbedding(latDir, backend === 'local' ? 'local' : null);
     configuredNow = true;
-  } else if (configureDefault && !workingHosted) {
+  } else if (configureDefault && !workingHosted && !preserveHosted) {
     backend = 'local';
     setRepoEmbedding(latDir, 'local');
     configuredNow = true;
@@ -1297,6 +1326,15 @@ async function setupEmbeddingsForInit(
     );
   } else {
     backend = existingBackend ?? (key ? 'remote' : 'local');
+    if (preserveHosted) {
+      console.log('');
+      console.log(
+        '  Leaving this repo on hosted embeddings: its index was built for a',
+      );
+      console.log(
+        '  configured endpoint that could not be reached from here just now.',
+      );
+    }
   }
 
   if (configuredNow && backend === 'local' && !key) {
@@ -1398,6 +1436,14 @@ function resolveInitVaultName(root: string, requested?: string): string {
       process.exit(1);
     }
     return requested;
+  }
+  // A malformed config must not be scaffolded over: every other command refuses
+  // to run until it is fixed, and init is the one that would repair it.
+  const configError = projectConfigError(root);
+  if (configError) {
+    console.error(styleText('red', configError));
+    console.error(styleText('dim', 'Fix or remove it to continue.'));
+    process.exit(1);
   }
   return readLatProjectConfig(root).config.dir ?? DEFAULT_LATTICE_DIR_NAME;
 }

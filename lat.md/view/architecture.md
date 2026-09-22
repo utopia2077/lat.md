@@ -138,7 +138,7 @@ A server-lifetime [[src/view/store.ts#createViewStore|ViewStore]] keeps document
 
 At startup the store reads each Markdown file once through the shared [[architecture-analysis#File analysis|file analyzer]], scans code references once, and obtains the explicit supported-source inventory from [[packages/core/src/code-refs.ts#createCodeReferenceDiscovery]] for its watch scope. It then resolves the cached AST-free facts into an immutable reverse-reference snapshot.
 
-The store watches the project with a short debounce and serializes updates. Existing Markdown and code files are reread individually; file additions trigger a lightweight scope refresh, and deletions remove their cached contributions. Disposable `lat.md/.cache` writes are ignored at the watcher boundary.
+The store watches the project with a short debounce and serializes updates. Existing Markdown and code files are reread individually; file additions trigger a lightweight scope refresh, and deletions remove their cached contributions. Disposable `<vault>/.cache` writes are ignored at the watcher boundary.
 
 Every update atomically replaces the snapshot. Section identity changes rebuild the global resolution maps and re-resolve cached occurrences from memory, but never force unchanged files to be reread or reparsed.
 
@@ -154,7 +154,7 @@ Markdown generations also dirty semantic search. The next query shares one incre
 
 When the vault belongs to a Git worktree, the server caches its [[src/view/git.ts#readViewGitSnapshot|HEAD comparison]] so Git subprocesses never run during document requests.
 
-The initial snapshot runs Git once, using argument-array subprocesses without a shell. A debounced change anywhere inside `lat.md/` refreshes the full-vault diff together with porcelain status for untracked files; unrelated project changes reuse the cache.
+The initial snapshot runs Git once, using argument-array subprocesses without a shell. A debounced change anywhere inside the vault refreshes the full-vault diff together with porcelain status for untracked files; unrelated project changes reuse the cache.
 
 An unreferenced two-second timer also refreshes Git through the store's serialized queue, catching commits and other repository-state changes that do not alter vault files. Unchanged snapshots neither increment the generation nor notify clients.
 
@@ -260,6 +260,6 @@ Repository resources use a sandbox CSP without script or same-origin privileges.
 
 Static and server builds publish linked source and resource files only within an explicit file inventory. Interactive browsing retains its broader project-contained read behavior.
 
-In Git projects, publication requires a tracked regular file that is not ignored. Outside Git, the ordinary walker applies `.gitignore` rules. Dot paths, dependency trees, and `config.local.yaml` are always excluded, including through symlink aliases. Add intended public files to Git and remove ignore rules before building; excluded links fail the build while preserving the previous output.
+In Git projects, publication requires a tracked regular file that is not ignored. Outside Git, the ordinary walker applies `.gitignore` rules. Dot paths, dependency trees, and `config.local.yaml` are always excluded, including through symlink aliases, and so is anything the project config's [[vault#Config file|exclude list]] names. Add intended public files to Git and remove ignore rules before building; excluded links fail the build while preserving the previous output.
 
 The same policy filters code-reference files before snippets enter documents or graph data. External documents do not authorize local source collection. Foreign-origin links are not local routes, and decoded paths and route writes remain confined to the export payload.

@@ -30,7 +30,7 @@ Precedence is the `LAT_DIR` environment variable, then that level's config file,
 
 A level that has a config file is authoritative: it does not also fall back to `lat.md`, so a half-finished migration cannot silently select the old vault. `LAT_DIR` is an ad-hoc override for CI and one-off runs — `lat init` never persists it.
 
-`latticeDirName` never throws, so the hook and MCP paths survive a typo in the config. The CLI entry points check [[packages/core/src/project-discovery.ts#projectConfigError]] and fail loudly instead, because silently falling back to the default name would otherwise pick up a leftover vault.
+`latticeDirName` never throws, so an agent hook survives a typo in the config and keeps its turn moving. Every command that resolves a project — `lat check`, `lat search`, `lat mcp` — checks [[packages/core/src/project-discovery.ts#projectConfigError]] and fails loudly instead, because silently falling back to the default name would otherwise pick up a leftover vault.
 
 ## Derived prefixes
 

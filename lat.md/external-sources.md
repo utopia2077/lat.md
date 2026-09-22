@@ -159,7 +159,7 @@ Redirects are bounded and every redirect target must independently satisfy the H
 
 ## Local Overrides
 
-Machine-specific source selections live in the gitignored `lat.md/config.local.yaml` file without a redundant top-level `lat` key.
+Machine-specific source selections live in the gitignored `<vault>/config.local.yaml` file without a redundant top-level `lat` key.
 
 ```yaml
 external-sources:
@@ -191,7 +191,7 @@ Local overrides intentionally make resolution and validation machine-specific. U
 
 `lat init` keeps local overrides out of version control using the existing idempotent Git-ignore management.
 
-Every setup run ensures that `lat.md/.gitignore` contains:
+Every setup run ensures that the vault's `.gitignore` contains:
 
 ```gitignore
 config.local.yaml
@@ -298,14 +298,14 @@ Agents that need an editable checkout use the suggested sparse-clone commands re
 
 ## Cache and Invalidation
 
-External content is cached per source. Fetched files stay below `lat.md/.cache/external/`; managed Git repositories live in a user cache outside the project. Commit changes invalidate only the affected source.
+External content is cached per source. Fetched files stay below `<vault>/.cache/external/`; managed Git repositories live in a user cache outside the project. Commit changes invalidate only the affected source.
 
 ### Cache Layout
 
 Each source owns one JSON metadata file and, for `fetch` or `checkout`, one adjacent cache directory derived from its validated name.
 
 ```text
-lat.md/.cache/external/
+<vault>/.cache/external/
 ├── next-docs/
 │   └── docs/app/routing.md
 └── next-docs.json
