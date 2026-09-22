@@ -144,7 +144,13 @@ flowchart TB
     exact --> matches
 ```
 
-[[src/search/lexical.ts#lexicalTokens]] lowercases Unicode word tokens and stems ASCII English words with [[packages/stemmer]]. Other word tokens remain unstemmed. [[src/search/lexical.ts#synchronizeLexical]] maintains derived `lexical_chunks` rows and a lexical-policy version independent of vector fingerprints.
+[[src/search/lexical.ts#lexicalTokens]] lowercases Unicode word tokens and stems ASCII English words with [[packages/stemmer]]. Other word tokens remain unstemmed.
+
+A run of letters between punctuation marks is one token to a whitespace tokenizer, which for Chinese prose means a whole clause — no query shorter than that clause could match it. Han runs are therefore segmented into words with [[package.json|jieba-wasm]] (jieba-rs compiled to WASM, the same shape as the stemmer). Runs without Han bypass the segmenter entirely and stay whole, and the segmenter module is imported dynamically only when tokenized text actually contains Han, so a project without Han content never loads its dictionary.
+
+Segmentation widens the lexical query: `重试的` becomes `"重试" OR "的"`, and a function word that appears in most passages adds low-scoring candidates that RRF ranks below the real match. This is a ranking refinement, not a correctness problem — the candidate floor and over-fetch bound it.
+
+A project can extend the dictionary through [[vault#Config file|`segmenter-words`]], because a compound term the dictionary splits is only findable through its parts. An entry is consulted only for runs containing Han, so it cannot break apart a Latin word. The glossary is part of [[src/search/lexical.ts#lexicalVersion]], and the index records it in `meta`, so both sides are tokenized identically: a query adopts the glossary the index was built with rather than the current config. [[src/search/lexical.ts#synchronizeLexical]] maintains derived `lexical_chunks` rows and a lexical-policy version independent of vector fingerprints, tokenizing through a glossary private to that run so a concurrent query adopting its own cannot change the rows mid-loop.
 
 [[src/search/db.ts#CREATE_PASSAGE_FTS]] uses Turso's Tantivy FTS with whitespace tokenization and weights of body 1, heading 2, and path 0.5. Whitespace tokenization preserves the stems emitted by the application. This implements English word-form normalization, not synonym expansion or language detection.
 

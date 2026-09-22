@@ -1,4 +1,8 @@
-import { LEXICAL_VERSION } from './lexical.js';
+import {
+  SEGMENTER_WORDS_KEY,
+  lexicalVersion,
+  parseStoredWords,
+} from './lexical.js';
 import { ReindexRequiredError } from './embedder.js';
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
@@ -72,7 +76,10 @@ export async function openIndexedSearchSession(
   };
   const initial = await readMetadata();
   const stored = initial.get('embedding_model') ?? null;
-  if (stored && initial.get('lexical_version') !== LEXICAL_VERSION)
+  // Validate against the glossary the index recorded, not the project config:
+  // a deployed site has no config file beside its built artifact.
+  const indexedWords = parseStoredWords(initial.get(SEGMENTER_WORDS_KEY));
+  if (stored && initial.get('lexical_version') !== lexicalVersion(indexedWords))
     throw new ReindexRequiredError(
       'Search lexical index changed; run lat search to update it.',
     );

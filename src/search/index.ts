@@ -1,4 +1,5 @@
 import { PARSER_CACHE_VERSION } from '@lat.md/core/parser-cache';
+import { latticeSegmenterWords } from '@lat.md/core/project-discovery';
 import { synchronizeLexical } from './lexical.js';
 import { dirname } from 'node:path';
 import { CREATE_PASSAGE_FTS, type SearchDb } from './db.js';
@@ -43,6 +44,7 @@ export async function indexSections(
   analyzedProject?: MarkdownProjectAnalysis,
   onNotice?: (message: string) => void,
 ): Promise<IndexStats> {
+  const words = latticeSegmenterWords(latDir);
   const project =
     analyzedProject ??
     (await analyzeMarkdownProject(latDir, dirname(latDir), {
@@ -111,7 +113,7 @@ export async function indexSections(
     // Lexical maintenance can repair old generations without embedding work.
     await db.execute('BEGIN');
     try {
-      await synchronizeLexical(db);
+      await synchronizeLexical(db, words);
       await db.execute({
         sql: "UPDATE meta SET value=? WHERE key='project_hash' AND value<>?",
         args: [projectHash, projectHash],
@@ -231,7 +233,7 @@ export async function indexSections(
       sql: 'INSERT OR REPLACE INTO meta VALUES (?,?)',
       args: ['project_hash', projectHash],
     });
-    await synchronizeLexical(db);
+    await synchronizeLexical(db, words);
     if (rebuildFts) await db.execute(CREATE_PASSAGE_FTS);
     await db.execute('COMMIT');
   } catch (error) {

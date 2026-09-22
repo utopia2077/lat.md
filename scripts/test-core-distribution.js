@@ -106,6 +106,7 @@ test('packed core exposes only core commands without heavy dependencies', () => 
     '@lat.md/embed-minilm-fp16',
     '@lat.md/server',
     '@lat.md/stemmer',
+    'jieba-wasm',
     'fs-native-extensions',
     'express',
     '@modelcontextprotocol/sdk',

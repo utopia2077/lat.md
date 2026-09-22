@@ -22,6 +22,7 @@ Shared patterns for writing and organizing tests in this project.
 - [[locate]] — Finding sections by exact, subsection, and fuzzy matching
 - [[refs-e2e]] — End-to-end tests for the refs command
 - [[search]] — Semantic search provider detection and RAG replay tests
+- [[lexical-segmenter]] — CJK word segmentation and the project glossary
 - [[remote-embedder]] — OpenAI-compatible endpoint selection, width probing, and rate-limit handling
 - [[check-index]] — Validating directory index files
 - [[expand]] — Expand command ref expansion and context block formatting

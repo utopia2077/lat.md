@@ -34,6 +34,12 @@ export type LatProjectConfig = {
    * the browser alike.
    */
   exclude?: string[];
+  /**
+   * Extra words for the CJK segmenter's dictionary. A term the dictionary does
+   * not know is split into its parts, which turns an exact-term search into a
+   * fuzzy one; naming it here keeps it whole.
+   */
+  'segmenter-words'?: string[];
 };
 
 export type LatProjectConfigResult = {
@@ -64,6 +70,25 @@ export function validateLatticeDirName(value: unknown): string | null {
 function validateDir(value: unknown): string | null {
   const problem = validateLatticeDirName(value);
   return problem === null ? null : `"dir" ${problem}`;
+}
+
+/**
+ * Segmenter tokens are runs of letters, digits, and underscores — the same
+ * shape the tokenizer extracts. Anything else can never match one, so a word
+ * with punctuation or whitespace would validate and then do nothing.
+ *
+ * The word must also contain a Han character. Only Han runs are split by the
+ * tokenizer, so an entry for any other script would likewise do nothing: a
+ * Latin run is already one token, and the segmenter has no dictionary for kana
+ * or hangul.
+ */
+function validateSegmenterWord(value: string): string | null {
+  if (!value.trim()) return 'must not be empty';
+  if (!/^[\p{L}\p{N}_]+$/u.test(value))
+    return 'must be a single word of letters, digits, or underscores';
+  if (!/\p{Script=Han}/u.test(value))
+    return 'must contain a Han character, since only Han text is segmented';
+  return null;
 }
 
 /**
@@ -116,10 +141,30 @@ export function readLatProjectConfig(
     }
   }
 
+  const words = record['segmenter-words'];
+  if (words !== undefined) {
+    if (!Array.isArray(words))
+      return {
+        config: {},
+        error: '"segmenter-words" must be an array of strings',
+      };
+    for (const word of words as unknown[]) {
+      if (typeof word !== 'string')
+        return {
+          config: {},
+          error: '"segmenter-words" must be an array of strings',
+        };
+      const problem = validateSegmenterWord(word);
+      if (problem)
+        return { config: {}, error: `"segmenter-words" entry ${problem}` };
+    }
+  }
+
   const config: LatProjectConfig = {};
   if (typeof record.dir === 'string') config.dir = record.dir;
   if (Array.isArray(record.exclude))
     config.exclude = record.exclude as string[];
+  if (Array.isArray(words)) config['segmenter-words'] = words as string[];
   return { config, error: null };
 }
 
@@ -160,4 +205,9 @@ export function latticeExcludePaths(latDir: string): readonly string[] {
   // policy match paths differently, and an unnormalized `private/` would be
   // honored by one and ignored by the other.
   return entries.map(normalizeRelativePath).filter((entry) => entry.length > 0);
+}
+
+/** Glossary words the project adds to the CJK segmenter's dictionary. */
+export function latticeSegmenterWords(latDir: string): readonly string[] {
+  return readLatProjectConfig(dirname(latDir)).config['segmenter-words'] ?? [];
 }

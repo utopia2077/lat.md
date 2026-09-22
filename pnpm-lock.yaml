@@ -47,6 +47,9 @@ importers:
       fs-native-extensions:
         specifier: 1.5.1
         version: 1.5.1
+      jieba-wasm:
+        specifier: ^2.4.0
+        version: 2.4.0
       rehype-katex:
         specifier: ^7.0.1
         version: 7.0.1
@@ -2397,6 +2400,9 @@ packages:
 
   isexe@2.0.0:
     resolution: {integrity: sha512-RHxMLp9lnKHGHRng9QFhRCMbYAcVpn69smSGcq3f36xjgVVWThj4qqLbTLlq7Ssj8B+fIQ1EuCEGI2lKsyQeIw==}
+
+  jieba-wasm@2.4.0:
+    resolution: {integrity: sha512-ZvQdS+FGifrFXZIXSgOyOgEz+1wdy1P4vSvwe37FVtku9ycSdHTZbHqF5i9tMN1JucoAmeiLBeI6/YaqcGD+KA==}
 
   jose@6.2.1:
     resolution: {integrity: sha512-jUaKr1yrbfaImV7R2TN/b3IcZzsw38/chqMpo2XJ7i2F8AfM/lA4G1goC3JVEwg0H7UldTmSt3P68nt31W7/mw==}
@@ -5392,6 +5398,8 @@ snapshots:
   is-promise@4.0.0: {}
 
   isexe@2.0.0: {}
+
+  jieba-wasm@2.4.0: {}
 
   jose@6.2.1: {}
 

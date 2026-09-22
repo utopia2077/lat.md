@@ -7,6 +7,7 @@ import {
   latticeDirRel,
   latticeIndexFileName,
   latticePathPrefix,
+  latticeSegmenterWords,
   listLatticeFiles,
 } from '@lat.md/core/project-discovery';
 import {
@@ -29,9 +30,7 @@ function codeReference(comment: string, target: string): string {
   return `${comment} @${'lat'}: [[${target}]]\n`;
 }
 
-async function createProject(
-  files: Record<string, string>,
-): Promise<string> {
+async function createProject(files: Record<string, string>): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'lat-project-config-'));
   roots.push(root);
   for (const [path, content] of Object.entries(files)) {
@@ -65,7 +64,9 @@ afterEach(async () => {
   delete process.env.LAT_DIR;
   delete process.env.LAT_LLM_BASE_URL;
   delete process.env.LAT_LLM_MODEL;
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
+  await Promise.all(
+    roots.splice(0).map((root) => rm(root, { recursive: true, force: true })),
+  );
 });
 
 describe('project config', () => {
@@ -74,6 +75,21 @@ describe('project config', () => {
     const root = await createProject({});
     expect(readLatProjectConfig(root)).toEqual({ config: {}, error: null });
     expect(latticeDirName(root)).toBe(DEFAULT_LATTICE_DIR_NAME);
+  });
+
+  // @lat: [[tests/lexical-segmenter#Project Glossary#Reads the glossary from the project config]]
+  it('reads a segmenter glossary from the config', async () => {
+    const root = await createProject({
+      'lat.config.json': JSON.stringify({
+        dir: 'docs',
+        'segmenter-words': ['幂等', '回滚'],
+      }),
+      'docs/docs.md': 'This directory defines the project.\n',
+    });
+    // Entries must be tokens the tokenizer could produce, so punctuation and
+    // whitespace are rejected rather than accepted as a silent no-op.
+    expect(latticeSegmenterWords(join(root, 'docs'))).toEqual(['幂等', '回滚']);
+    expect(latticeSegmenterWords(root)).toEqual([]);
   });
 
   it('reads a configured directory and preserves an exclude list', async () => {
@@ -119,6 +135,26 @@ describe('project config', () => {
       'an empty exclude path',
       '{"dir": "docs", "exclude": ["  "]}',
       'must not be empty',
+    ],
+    [
+      'a non-array segmenter-words',
+      '{"dir": "docs", "segmenter-words": "幂等"}',
+      '"segmenter-words"',
+    ],
+    [
+      'a punctuated segmenter word',
+      '{"dir": "docs", "segmenter-words": ["幂等/回滚"]}',
+      'must be a single word',
+    ],
+    [
+      'a segmenter word with a space',
+      '{"dir": "docs", "segmenter-words": ["幂 等"]}',
+      'must be a single word',
+    ],
+    [
+      'a segmenter word with no Han character',
+      '{"dir": "docs", "segmenter-words": ["kubernetes"]}',
+      'must contain a Han character',
     ],
   ])('reports %s', async (_label, content, message) => {
     const root = await createProject({ 'lat.config.json': content });

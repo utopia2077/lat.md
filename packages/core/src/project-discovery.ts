@@ -7,6 +7,7 @@ import {
   latDirEnvError,
   latticeDirName,
   latticeExcludePaths,
+  latticeSegmenterWords,
   readLatProjectConfig,
 } from './project-config.js';
 
@@ -19,6 +20,7 @@ export {
   latDirEnvError,
   latticeDirName,
   latticeExcludePaths,
+  latticeSegmenterWords,
   readLatProjectConfig,
   validateLatticeDirName,
   type LatProjectConfig,

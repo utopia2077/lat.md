@@ -1,4 +1,8 @@
-import { lexicalTokens } from './lexical.js';
+import {
+  adoptIndexedSegmenterWords,
+  ensureSegmenterFor,
+  lexicalTokens,
+} from './lexical.js';
 import type { SearchDb } from './db.js';
 import type { Embedder } from './embedder.js';
 import type { SearchResult, SearchEvidence } from './types.js';
@@ -62,6 +66,11 @@ export async function searchSections(
   const vector =
     preparedVector ??
     (await prepareSearchQuery(query, embedder, limit, minSimilarity));
+  // Tokenize the query the way the index tokenized its passages. The glossary
+  // comes from the index, not the project config, so a config edit that has not
+  // been re-indexed cannot split a query differently from what it searches.
+  await adoptIndexedSegmenterWords(db);
+  await ensureSegmenterFor([query]);
   const vectorJson = JSON.stringify(vector),
     fts = literalFtsQuery(query);
   const target = Math.max(50, limit),

@@ -1,4 +1,4 @@
-import { LEXICAL_VERSION } from '../src/search/lexical.js';
+import { lexicalVersion } from '../src/search/lexical.js';
 vi.mock('node:fs', () => ({ existsSync: () => true }));
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Section } from '@lat.md/core/lattice-model';
@@ -58,7 +58,7 @@ describe('indexed search sessions', () => {
       database: 'test',
       execute: vi.fn().mockResolvedValue({
         rows: [
-          { key: 'lexical_version', value: LEXICAL_VERSION },
+          { key: 'lexical_version', value: lexicalVersion() },
           { key: 'embedding_model', value: 'local:test:1' },
         ],
       }),
@@ -188,5 +188,35 @@ describe('indexed search sessions', () => {
     expect(mocks.closeDb).toHaveBeenCalledTimes(2);
     await session.close();
     await expect(session.search('query', 5)).rejects.toThrow('closed');
+  });
+
+  // @lat: [[tests/lexical-segmenter#Lexical Segmenter#Chinese Retrieval#Validates the version against the recorded glossary]]
+  it('validates the version against the glossary the index recorded', async () => {
+    const meta = (rows: { key: string; value: string }[]) =>
+      mocks.openDb.mockReturnValue({
+        database: 'test',
+        execute: vi.fn().mockResolvedValue({ rows }),
+      });
+    // A deployed site serves a built index with no config file beside it, so
+    // the index's own recorded glossary is what its rows were tokenized with.
+    meta([
+      { key: 'lexical_version', value: lexicalVersion(['幂等']) },
+      { key: 'embedding_model', value: 'local:test:1' },
+      { key: 'segmenter_words', value: '["幂等"]' },
+    ]);
+    const session = await openIndexedSearchSession('/project/lat.md');
+    await session.close();
+
+    // A version that no longer agrees with the recorded glossary means the
+    // rows came from other rules, and searching them would silently match the
+    // wrong tokens instead of failing.
+    meta([
+      { key: 'lexical_version', value: lexicalVersion() },
+      { key: 'embedding_model', value: 'local:test:1' },
+      { key: 'segmenter_words', value: '["幂等"]' },
+    ]);
+    await expect(openIndexedSearchSession('/project/lat.md')).rejects.toThrow(
+      'Search lexical index changed',
+    );
   });
 });

@@ -1,4 +1,5 @@
-import { LEXICAL_VERSION } from '../search/lexical.js';
+import { lexicalVersion } from '../search/lexical.js';
+import { latticeSegmenterWords } from '@lat.md/core/project-discovery';
 import { hasIndex } from '../search/db.js';
 import { embeddingFingerprint } from '../search/chunks.js';
 import { writeIndex } from '../search/cache.js';
@@ -80,6 +81,7 @@ async function withDb<T>(
     } finally {
       await closeDb(metadataDb);
     }
+    const words = latticeSegmenterWords(latDir);
     const stored = metadata.get('embedding_model') ?? null;
     const embedder = await embedderForIndex(stored, latDir);
     if (metadata.get('fingerprint') !== embeddingFingerprint(embedder))
@@ -88,7 +90,7 @@ async function withDb<T>(
       );
     if (
       !stored ||
-      metadata.get('lexical_version') !== LEXICAL_VERSION ||
+      metadata.get('lexical_version') !== lexicalVersion(words) ||
       metadata.get('project_hash') !== projectFingerprint(project)
     )
       break;

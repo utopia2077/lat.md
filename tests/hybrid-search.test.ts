@@ -27,7 +27,11 @@ import {
   openDb,
   INDEX_FILE,
 } from '../src/search/db.js';
-import { lexicalTokens, LEXICAL_VERSION } from '../src/search/lexical.js';
+import {
+  ensureSegmenterFor,
+  lexicalTokens,
+  lexicalVersion,
+} from '../src/search/lexical.js';
 import { stem, stemWords } from '@lat.md/stemmer';
 import { indexSections, projectFingerprint } from '../src/search/index.js';
 import { searchSections, collapse } from '../src/search/search.js';
@@ -193,6 +197,9 @@ describe('hybrid search', () => {
     ]);
     expect(stem('')).toBe('');
     expect(stemWords([])).toEqual([]);
+    // Tokenizing is synchronous, so the segmenter must be loaded up front —
+    // exactly as searchSections and synchronizeLexical do it.
+    await ensureSegmenterFor(['中文']);
     expect(lexicalTokens('API_TOKEN café 中文 123')).toEqual([
       'api_token',
       'café',
@@ -250,7 +257,7 @@ describe('hybrid search', () => {
             "SELECT value FROM meta WHERE key='lexical_version'",
           )
         ).rows[0].value,
-      ).toBe(LEXICAL_VERSION);
+      ).toBe(lexicalVersion());
       expect((await searchSections(f.db, 'files', engine))[0].lexicalRank).toBe(
         1,
       );
@@ -306,7 +313,7 @@ describe('hybrid search', () => {
       await f.db.execute('UPDATE lexical_chunks SET body=body');
       await f.db.execute({
         sql: "UPDATE meta SET value=? WHERE key='lexical_version'",
-        args: [LEXICAL_VERSION.replace(':live-statistics-v1', '')],
+        args: [lexicalVersion().replace(':live-statistics-v1', '')],
       });
       const engine = { ...simple, embed: vi.fn(simple.embed) };
       const drifted = await scores();
@@ -334,7 +341,7 @@ describe('hybrid search', () => {
             "SELECT value FROM meta WHERE key='lexical_version'",
           )
         ).rows[0].value,
-      ).not.toBe(LEXICAL_VERSION);
+      ).not.toBe(lexicalVersion());
       await indexSections(f.lat, f.db, engine);
       expect(await scores()).toEqual(expected);
       expect((await f.db.execute('SELECT * FROM embeddings')).rows).toEqual(

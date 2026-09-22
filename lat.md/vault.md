@@ -22,6 +22,10 @@ Machine-local vault settings stay in `<vault>/config.local.yaml`, which is a dif
 
 It is the explicit counterpart to a vault `.gitignore` rule — the two compose, but only `exclude` states the intent directly: it applies whether or not the project is a Git checkout, and whether or not the paths it names are committed. Dropping a directory still leaves any index entry pointing at it stale, which [[cli#check#index]] reports like any other missing target.
 
+`segmenter-words` extends the CJK segmenter's dictionary with terms it does not know. A term the dictionary splits into its parts turns an exact-term search into a fuzzy one, so naming it here keeps it whole. Each entry must be a single token of letters, digits, or underscores containing a Han character — anything else could never match one, and is rejected rather than accepted as a silent no-op. Entries apply only to runs containing Han, so a Latin word, which already tokenizes as one piece, is never broken apart by one.
+
+Changing the list re-tokenizes the index, and it participates in the version that decides whether re-tokenization is needed, so a stale index cannot keep answering with the previous dictionary.
+
 ## Discovery
 
 [[packages/core/src/project-discovery.ts#findLatticeDir]] resolves the vault name at each directory level while walking up from the working directory, so a command started in a nested package still works.
