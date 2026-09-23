@@ -29,6 +29,7 @@ You have access to the following MCP tools from the `lat` server:
 
 - **lat_locate** — find a section by name (exact, fuzzy)
 - **lat_search** — semantic search across all sections
+- **lat_section** — show a section with its content and outgoing/incoming refs
 - **lat_expand** — expand `[[refs]]` in text to resolved locations
 - **lat_check** — run full graph and documentation validation
 - **lat_refs** — find what references a section
@@ -54,6 +55,7 @@ Key tests can be described as sections in `__LAT_DIR__/` files (e.g. `tests.md`)
 lat:
   require-code-mention: true
 ---
+
 # Tests
 
 Authentication and authorization test specifications.
@@ -63,9 +65,11 @@ Authentication and authorization test specifications.
 Verify credential validation and error handling for the login endpoint.
 
 ### Rejects expired tokens
+
 Tokens past their expiry timestamp are rejected with 401, even if otherwise valid.
 
 ### Handles missing password
+
 Login request without a password field returns 400 with a descriptive error.
 ```
 

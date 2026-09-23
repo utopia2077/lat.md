@@ -32,7 +32,7 @@ Shared patterns for writing and organizing tests in this project.
 - [[check-sections]] — Validating section leading paragraphs
 - [[check-headless]] — Validating explicit Markdown directories
 - [[section]] — getSection core function and formatSectionOutput formatter
-- [[hook]] — Lifecycle hook context injection, conditional continuation, and setup merging
+- [[hook]] — Lifecycle hook context injection and conditional continuation
 - [[init]] — Initialization defaults for local-first semantic search
 - [[project-config]] — Project-level vault directory config and discovery
 - [[config]] — User-level configuration and repository embedding preference persistence

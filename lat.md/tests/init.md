@@ -97,6 +97,10 @@ A `CLAUDE.md` holding nothing but the generated marker section is replaced by th
 
 Selecting any combination of agents writes no hook configuration and no Pi lifecycle handlers, while MCP registration and tool access stay in place.
 
+### Removes hooks an earlier init installed
+
+A setup written while init still installed hooks is migrated: lat's own entries are stripped from the three settings files and a file holding nothing else is deleted, whether or not any agent is selected this run. Unrelated hook entries survive.
+
 ## Generated instructions
 
 Generated agent guidance must remain valid Markdown wherever project layouts expose it to Lat's graph scanner.

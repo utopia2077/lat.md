@@ -165,7 +165,8 @@ Supported targets:
 - `agents.md` — generate an `AGENTS.md` with instructions for coding agents on how to use `lat.md` in the project
 - `claude.md` — alias for `agents.md`
 - `cursor-rules.md` — generate Cursor rules for `.cursor/rules/lat.md`
-- `pi-extension.ts` — generate the Pi extension template (tools + lifecycle hooks)
+- `pi-extension.ts` — generate the Pi extension template (registers tools only, no lifecycle hooks)
+- `opencode-plugin.ts` — generate the OpenCode plugin template (registers tools and a session-end hook)
 - `skill.md` — generate the Agent Skills spec `SKILL.md` for the `lat-md` skill (authoring guide for `lat.md/` files)
 
 Output is written to stdout so it can be redirected: `lat gen agents.md > AGENTS.md`.
@@ -207,7 +208,7 @@ Sets up a `CLAUDE.md` symlink, the skill, and the MCP server for the Claude Code
 
 - `CLAUDE.md` — a symlink to `AGENTS.md`, never a second copy. Two files holding the same generated section drift as soon as one is edited, and [[packages/core/src/project-write.ts#projectWritePath]] resolves an in-project symlink, so a later `lat init` writing `CLAUDE.md` lands in `AGENTS.md` and stays idempotent. A `CLAUDE.md` carrying the user's own prose is left untouched, with a note to move it into `AGENTS.md`; one holding nothing but the generated marker section is replaced by the symlink.
 - `.claude/skills/lat-md/SKILL.md` — skill spec generated from `templates/skill/SKILL.md`. Teaches the agent how to author and maintain `lat.md/` files. Claude Code discovers it automatically from `.claude/skills/`.
-- `.claude` directory added to `.gitignore` (MCP config can contain local absolute paths)
+- `.claude` directory added to `.gitignore` (personal agent settings there are not shared)
 - [[cli#mcp]] server registered in `.mcp.json` at the project root (added to `.gitignore` since it contains absolute paths)
 
 ### Initialization write boundaries
@@ -342,10 +343,10 @@ Reads the hook input from stdin (Claude JSON with `user_prompt` or Codex JSON wi
 
 Conditionally continues Claude or Codex — only when something is actually wrong. Both agents use the same `decision: "block"` response and `stop_hook_active` loop guard.
 
-1. **No `lat.md/` dir** — exit silently.
+1. **No vault directory** — exit silently. Every mention of `lat.md/` below is the configured vault name, resolved at runtime.
 2. **Run `lat check`** — always, on both first and second pass.
 3. **Second pass** (`stop_hook_active` true) — if check still fails, print warning to stderr (no block, loop stops). If check passes, exit silently.
-4. **First pass** — measure churn via [[src/cli/hook.ts#analyzeDiff]]: project-relative `git diff HEAD --numstat --relative -- .` covers tracked changes, while NUL-delimited `git ls-files --others --exclude-standard -z -- .` discovers untracked files and respects Git ignore rules. Both scans stay within the discovered Lat project when it is nested in a larger Git worktree. The hook counts regular files under `lat.md/` plus code files matching [[packages/core/src/source-formats.ts#SOURCE_FILE_EXTENSIONS]]; it classifies untracked paths before reading them, so unrelated files are skipped. This makes a freshly scaffolded, never-committed `lat.md/` visible. Outside a Git worktree, diff analysis contributes zero churn by design: Git is optional, so validation still runs but the sync reminder is disabled. Skip the ratio check if `codeLines < 5` or `latMdLines >= 50`; otherwise flag `needsSync` when `latMdLines < codeLines * 5%`.
+4. **First pass** — measure churn via [[src/cli/hook.ts#analyzeDiff]]: project-relative `git diff HEAD --numstat --relative -- .` covers tracked changes, while NUL-delimited `git ls-files --others --exclude-standard -z -- .` discovers untracked files and respects Git ignore rules. Both scans stay within the discovered Lat project when it is nested in a larger Git worktree. The hook counts regular files under the vault plus code files matching [[packages/core/src/source-formats.ts#SOURCE_FILE_EXTENSIONS]]; it classifies untracked paths before reading them, so unrelated files are skipped. This makes a freshly scaffolded, never-committed vault visible. Outside a Git worktree, diff analysis contributes zero churn by design: Git is optional, so validation still runs but the sync reminder is disabled. Skip the ratio check if `codeLines < 5` or `latMdLines >= 50`; otherwise flag `needsSync` when `latMdLines < codeLines * 5%`.
 5. **Decision** — both pass: exit silently, clean output. Check failed + needs sync: block ("update relevant current-state `lat.md/` sections if needed, then run `lat check` until it passes"). Check failed only: block ("run `lat check` until it passes"). Needs sync only: block with explicit context ("not updated" when 0 lat.md lines, "may not be fully in sync (N lines)" when some changes exist but below ratio) and a reminder not to add journal/changelog noise.
 
 ### cursor stop
@@ -360,7 +361,7 @@ Start the MCP (Model Context Protocol) server over stdio. Exposes lat.md tools t
 
 Usage: `lat mcp`
 
-Clients invoke this as `lat mcp`. The `lat init` wizard registers the MCP server using the absolute path to the current `lat` binary, so it works regardless of how `lat` was installed. The server exposes six tools:
+Clients invoke this as `lat mcp`. The `lat init` wizard registers the server using the command style chosen during setup: the global `lat` command, or the absolute path to the current binary when the local style is selected. The server exposes six tools:
 
 - **lat_locate** — find sections by name (wraps [[cli#locate]])
 - **lat_section** — show section content with outgoing/incoming refs (wraps [[cli#section]])

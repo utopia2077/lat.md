@@ -5,10 +5,10 @@ import { dirname, join } from 'node:path';
 
 /**
  * Bump this number whenever `lat init` setup or defaults change in a way that
- * requires users to re-run it (e.g. new hooks, generated files, MCP config, or
- * a configuration migration).
+ * requires users to re-run it (e.g. new generated files, MCP config, or a
+ * configuration migration).
  */
-export const INIT_VERSION = 4;
+export const INIT_VERSION = 5;
 
 type InitMeta = {
   init_version: number;

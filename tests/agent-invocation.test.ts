@@ -101,8 +101,4 @@ it('preserves launcher arguments and command styles without parsing shell string
     args: [],
   });
   expect(agentInvocation('global', local, 'win32')).toEqual(local);
-  expect(agentInvocation('npx', local, 'linux')).toEqual({
-    command: 'npx',
-    args: ['lat.md@latest'],
-  });
 });

@@ -543,15 +543,68 @@ describe('lat init embedding setup', () => {
     ])
       expect(existsSync(join(root, path)), path).toBe(false);
     // The Pi extension registers tools only; prompt guidance comes from
-    // AGENTS.md rather than an injected reminder.
-    expect(
-      readFileSync(join(root, '.pi/extensions/lat.ts'), 'utf8'),
-    ).not.toContain('pi.on(');
+    // AGENTS.md rather than an injected reminder. Renderers are included in
+    // the check because they exist only to display what a hook emits.
+    const pi = readFileSync(join(root, '.pi/extensions/lat.ts'), 'utf8');
+    expect(pi).not.toContain('pi.on(');
+    expect(pi).not.toContain('registerMessageRenderer');
+    expect(pi).toContain('pi.registerTool');
     // Dropping hooks must not drop tool access.
     expect(readFileSync(join(root, '.mcp.json'), 'utf8')).toContain('"lat"');
     expect(readFileSync(join(root, '.codex/config.toml'), 'utf8')).toContain(
       'lat',
     );
+  });
+
+  // @lat: [[tests/init#Claude Code reads AGENTS.md#Removes hooks an earlier init installed]]
+  it('removes hooks an earlier init installed and keeps the user own', async () => {
+    createLatDir();
+    setInteractive(true);
+    vi.mocked(checklistMenu).mockResolvedValue([]);
+    mkdirSync(join(root, '.claude'), { recursive: true });
+    writeFileSync(
+      join(root, '.claude', 'settings.json'),
+      JSON.stringify({
+        hooks: {
+          UserPromptSubmit: [
+            { hooks: [{ type: 'command', command: 'custom prompt hook' }] },
+            {
+              hooks: [
+                {
+                  type: 'command',
+                  command: 'lat hook claude UserPromptSubmit',
+                },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+    mkdirSync(join(root, '.codex'), { recursive: true });
+    writeFileSync(
+      join(root, '.codex', 'hooks.json'),
+      JSON.stringify({
+        hooks: {
+          Stop: [
+            { hooks: [{ type: 'command', command: 'lat hook codex Stop' }] },
+          ],
+        },
+      }),
+    );
+
+    await initCmd(root);
+
+    // Cleanup runs whatever the agent selection is, so "no agents" still
+    // migrates a project set up before hooks were dropped.
+    const settings = JSON.parse(
+      readFileSync(join(root, '.claude', 'settings.json'), 'utf8'),
+    );
+    expect(settings.hooks.UserPromptSubmit).toHaveLength(1);
+    expect(settings.hooks.UserPromptSubmit[0].hooks[0].command).toBe(
+      'custom prompt hook',
+    );
+    // This one held nothing but lat hooks, so it is gone entirely.
+    expect(existsSync(join(root, '.codex', 'hooks.json'))).toBe(false);
   });
 
   // @lat: [[tests/init#Claude Code reads AGENTS.md#Keeps a hand-written CLAUDE.md]]

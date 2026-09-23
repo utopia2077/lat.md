@@ -226,11 +226,11 @@ program
 program
   .command('gen')
   .description(
-    'Generate a file to stdout (agents.md, claude.md, cursor-rules.md)',
+    'Generate a file to stdout (agents.md, claude.md, cursor-rules.md, …)',
   )
   .argument(
     '<target>',
-    'file to generate: agents.md, claude.md, cursor-rules.md',
+    'file to generate: agents.md, claude.md, cursor-rules.md, pi-extension.ts, opencode-plugin.ts, skill.md',
   )
   .action(async (target: string) => {
     const { genCmd } = await import('./gen.js');
@@ -252,7 +252,7 @@ program
 
 program
   .command('hook')
-  .description('Handle agent hook events (called by agent hooks, not directly)')
+  .description('Handle agent hook events (for hook wiring you set up yourself)')
   .argument('<agent>', 'agent name (claude, cursor)')
   .argument(
     '<event>',

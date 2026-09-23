@@ -12,7 +12,7 @@ import {
   symlinkSync,
   type Stats,
 } from 'node:fs';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, normalize, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
 import { createInterface } from 'node:readline/promises';
 import { styleText } from 'node:util';
@@ -438,8 +438,14 @@ function withoutMarkerSection(content: string): string {
  *
  * A `CLAUDE.md` carrying the user's own prose is left untouched: silently
  * discarding hand-written instructions is worse than a duplicate.
+ *
+ * Creating a symlink needs a privilege Windows does not grant by default, so a
+ * refusal falls back to writing the same section as a real file. The project
+ * must still be left with usable instructions, and it must never be left with
+ * no `CLAUDE.md` at all — which is why the fallback, not the removal, is what
+ * ends the function.
  */
-function linkClaudeInstructions(root: string): void {
+function linkClaudeInstructions(root: string, template: string): void {
   const linkPath = join(root, 'CLAUDE.md');
   const label = styleText('green', '  CLAUDE.md');
   // Same guard every other managed path goes through: a symlink escaping the
@@ -455,7 +461,9 @@ function linkClaudeInstructions(root: string): void {
   if (info?.isSymbolicLink()) {
     const target = readlinkSync(linkPath);
     console.log(
-      target === 'AGENTS.md'
+      // `./AGENTS.md` and `AGENTS.md` are the same link; comparing the
+      // normalized target keeps an equivalent spelling from reading as wrong.
+      normalize(target) === 'AGENTS.md'
         ? `${label} already links to AGENTS.md`
         : styleText('yellow', '  CLAUDE.md') +
             ` links to ${target}, not AGENTS.md — leaving it alone`,
@@ -474,8 +482,91 @@ function linkClaudeInstructions(root: string): void {
     rmSync(linkPath);
   }
 
-  symlinkSync('AGENTS.md', linkPath);
-  console.log(`${label} → AGENTS.md`);
+  try {
+    symlinkSync('AGENTS.md', linkPath);
+    console.log(`${label} → AGENTS.md`);
+  } catch {
+    writeProjectFile(root, linkPath, wrapWithMarkers(template));
+    console.log(
+      styleText('yellow', '  CLAUDE.md') +
+        ' written as a copy — this system does not allow symbolic links',
+    );
+  }
+}
+
+/** True for a command string an earlier `lat init` installed as a hook. */
+function isLatHookCommand(command: unknown): boolean {
+  return (
+    typeof command === 'string' && / hook (claude|codex|cursor) /.test(command)
+  );
+}
+
+/**
+ * Strip hook entries an earlier `lat init` installed. This version installs
+ * none, but a project set up by one that did would otherwise keep running them
+ * forever — including the `npx lat.md@latest` style, which invokes a different
+ * package than the one the project is configured for.
+ *
+ * Only lat's own entries are removed, and a file that held nothing else is
+ * deleted. Anything unreadable or unsafe to write is left as it is: a failed
+ * migration must not fail the run.
+ */
+function removeInstalledHooks(root: string, settingsPath: string): void {
+  const path = join(root, settingsPath);
+  if (!existsSync(path)) return;
+  let safePath: string;
+  try {
+    safePath = projectWritePath(root, path);
+  } catch {
+    return;
+  }
+
+  let settings: Record<string, unknown>;
+  try {
+    settings = JSON.parse(readFileSync(safePath, 'utf-8'));
+  } catch {
+    return;
+  }
+  const hooks = settings.hooks;
+  if (!hooks || typeof hooks !== 'object' || Array.isArray(hooks)) return;
+
+  const remaining = hooks as Record<string, unknown>;
+  let removed = 0;
+  for (const [event, entries] of Object.entries(remaining)) {
+    if (!Array.isArray(entries)) continue;
+    const kept = entries.filter((entry) => {
+      const nested = (entry as { hooks?: { command?: unknown }[] })?.hooks;
+      const owned = Array.isArray(nested)
+        ? nested.every((inner) => isLatHookCommand(inner?.command))
+        : isLatHookCommand((entry as { command?: unknown })?.command);
+      if (owned) removed++;
+      return !owned;
+    });
+    if (kept.length > 0) remaining[event] = kept;
+    else delete remaining[event];
+  }
+  if (removed === 0) return;
+
+  if (Object.keys(remaining).length > 0) {
+    writeProjectFile(root, safePath, JSON.stringify(settings, null, 2) + '\n');
+    console.log(
+      styleText('yellow', '  Removed lat hooks from') + ` ${settingsPath}`,
+    );
+    return;
+  }
+  delete settings.hooks;
+  if (Object.keys(settings).length > 0) {
+    writeProjectFile(root, safePath, JSON.stringify(settings, null, 2) + '\n');
+    console.log(
+      styleText('yellow', '  Removed lat hooks from') + ` ${settingsPath}`,
+    );
+    return;
+  }
+  rmSync(safePath, { force: true });
+  console.log(
+    styleText('yellow', '  Removed') +
+      ` ${settingsPath}, which held only lat hooks`,
+  );
 }
 
 /**
@@ -635,11 +726,12 @@ async function setupAgentsMd(
 async function setupClaudeCode(
   root: string,
   latDir: string,
+  template: string,
   hashes: Record<string, string>,
   ask: (message: string) => Promise<boolean>,
   style: LatCommandStyle,
 ): Promise<void> {
-  linkClaudeInstructions(root);
+  linkClaudeInstructions(root, template);
 
   // .claude/skills/lat-md/SKILL.md — skill for authoring lat.md files
   console.log('');
@@ -663,7 +755,7 @@ async function setupClaudeCode(
   );
   if (skillHash) hashes['.claude/skills/lat-md/SKILL.md'] = skillHash;
 
-  // Ensure .claude is gitignored (settings contain local absolute paths)
+  // Ensure .claude is gitignored (personal settings there are not shared)
   ensureGitignored(root, '.claude');
 
   // MCP server → .mcp.json at project root
@@ -740,7 +832,7 @@ async function setupCursor(
     );
   }
 
-  // Ensure .cursor is gitignored (hooks and MCP config may contain local paths)
+  // Ensure .cursor is gitignored (MCP config may contain local paths)
   ensureGitignored(root, '.cursor');
 
   // .agents/skills/lat-md/SKILL.md — skill for authoring lat.md files
@@ -809,20 +901,20 @@ async function setupPi(
   style: LatCommandStyle,
 ): Promise<void> {
   // AGENTS.md — Pi reads this natively
-  // (already created in the shared step if any non-Claude agent is selected)
+  // (already created in the shared step, which runs for any selected agent)
 
-  // .pi/extensions/lat.ts — extension that registers tools + lifecycle hooks
+  // .pi/extensions/lat.ts — extension that registers lat tools
   console.log('');
   console.log(
     styleText(
       'dim',
-      '  The Pi extension registers lat tools and hooks into the agent lifecycle',
+      '  The Pi extension registers lat tools so the agent can search, read,',
     ),
   );
   console.log(
     styleText(
       'dim',
-      `  to inject search context and validate ${basename(latDir)}/ before finishing.`,
+      `  and validate ${basename(latDir)}/ from the Pi tool loop.`,
     ),
   );
 
@@ -877,7 +969,7 @@ async function setupOpenCode(
   style: LatCommandStyle,
 ): Promise<void> {
   // AGENTS.md — OpenCode reads this natively
-  // (already created in the shared step if any non-Claude agent is selected)
+  // (already created in the shared step, which runs for any selected agent)
 
   // .opencode/plugins/lat.ts — plugin that registers tools + lifecycle hooks
   console.log('');
@@ -926,7 +1018,7 @@ async function setupCodex(
   style: LatCommandStyle,
 ): Promise<void> {
   // AGENTS.md — Codex reads this natively
-  // (already created in the shared step if any non-Claude agent is selected)
+  // (already created in the shared step, which runs for any selected agent)
 
   // .codex/config.toml — MCP server registration
   console.log('');
@@ -1474,6 +1566,15 @@ export async function initCmd(
     ensureLatLocalConfigIgnored(latDir);
     ensureGitignored(root, '.lat-build');
 
+    // Migrate projects set up while init still installed hooks. Runs whatever
+    // the agent selection turns out to be, so "no agents" cleans up too.
+    for (const settings of [
+      join('.claude', 'settings.json'),
+      join('.codex', 'hooks.json'),
+      join('.cursor', 'hooks.json'),
+    ])
+      removeInstalledHooks(root, settings);
+
     // Step 2: Configure fresh/outdated setups, ask interactive users about an
     // available key, and offer to rebuild an index whose backend differs. This
     // happens before agent selection so "no agents" still completes it.
@@ -1575,7 +1676,14 @@ export async function initCmd(
     if (useClaudeCode) {
       console.log('');
       console.log(styleText('bold', 'Setting up Claude Code...'));
-      await setupClaudeCode(root, latDir, fileHashes, ask, commandStyle);
+      await setupClaudeCode(
+        root,
+        latDir,
+        template,
+        fileHashes,
+        ask,
+        commandStyle,
+      );
     }
 
     if (usePi) {
