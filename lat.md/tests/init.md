@@ -77,6 +77,26 @@ Canceling the command-style prompt leaves the previous selection untouched becau
 
 Malformed YAML, non-mapping configuration, and incorrectly typed preferences produce an actionable file-specific error without overwriting local configuration.
 
+## Claude Code reads AGENTS.md
+
+Claude Code reads the shared instruction file through a symlink, so the generated section exists in exactly one place and cannot drift between two copies.
+
+### Links CLAUDE.md instead of duplicating the section
+
+Selecting Claude Code alone still writes `AGENTS.md`, and `CLAUDE.md` becomes a relative symlink to it holding the same content. Re-running init appends no second section through the link.
+
+### Keeps a hand-written CLAUDE.md
+
+A `CLAUDE.md` carrying the user's own prose is left as a regular file rather than replaced, because discarding hand-written instructions is worse than a duplicate.
+
+### Replaces a lat-only CLAUDE.md
+
+A `CLAUDE.md` holding nothing but the generated marker section is replaced by the symlink, migrating projects set up before the link existed.
+
+### Installs no hooks for any agent
+
+Selecting any combination of agents writes no hook configuration and no Pi lifecycle handlers, while MCP registration and tool access stay in place.
+
 ## Generated instructions
 
 Generated agent guidance must remain valid Markdown wherever project layouts expose it to Lat's graph scanner.

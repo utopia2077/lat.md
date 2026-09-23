@@ -3,9 +3,14 @@ import { projectWritePath, writeProjectFile } from '@lat.md/core/project-write';
 import {
   existsSync,
   cpSync,
+  lstatSync,
   mkdirSync,
   readFileSync,
+  readlinkSync,
   renameSync,
+  rmSync,
+  symlinkSync,
+  type Stats,
 } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { execSync } from 'node:child_process';
@@ -130,125 +135,19 @@ function resolveLatBin(): string {
 
 // ── Command style ───────────────────────────────────────────────────
 
-type LatCommandStyle = 'global' | 'local' | 'npx';
-
-/** Return the lat binary string for the given command style. */
-function latBinString(style: LatCommandStyle): string {
-  if (style === 'global') return 'lat';
-  if (style === 'npx') return 'npx lat.md@latest';
-  return resolveLatBin();
-}
+/**
+ * How generated agent configuration invokes lat. `npx lat.md@latest` is
+ * deliberately not offered: it resolves the published upstream package, which
+ * would silently swap this build for one without its configuration support.
+ */
+type LatCommandStyle = 'global' | 'local';
 
 /** Return the MCP server command descriptor for the given command style. */
 function styledMcpCommand(style: LatCommandStyle): {
   command: string;
   args: string[];
 } {
-  if (style === 'global') return { command: 'lat', args: ['mcp'] };
-  if (style === 'npx')
-    return { command: 'npx', args: ['lat.md@latest', 'mcp'] };
-  return mcpCommand();
-}
-
-// ── Claude Code helpers ──────────────────────────────────────────────
-
-/** Derive the hook command prefix for the given command style. */
-function latHookCommand(
-  style: LatCommandStyle,
-  agent: 'claude' | 'codex' | 'cursor',
-  event: string,
-): string {
-  return `${latBinString(style)} hook ${agent} ${event}`;
-}
-
-type HookEntry = { hooks?: { type?: string; command?: string }[] };
-
-/** True if any command in this entry looks like it was installed by lat. */
-function isLatHookEntry(entry: HookEntry): boolean {
-  const bin = resolve(process.argv[1]);
-  return (
-    entry.hooks?.some(
-      (h) =>
-        typeof h.command === 'string' &&
-        (/\blat\b/.test(h.command) ||
-          h.command.includes('hook claude ') ||
-          h.command.includes('hook codex ') ||
-          h.command.startsWith(bin + ' ')),
-    ) ?? false
-  );
-}
-
-/**
- * Remove all lat-owned hook entries from settings, then add fresh ones.
- * Preserves any non-lat hooks the user may have configured.
- */
-export function syncLatHooks(
-  settingsPath: string,
-  style: LatCommandStyle,
-  agent: 'claude' | 'codex' = 'claude',
-  root = dirname(dirname(settingsPath)),
-): void {
-  projectWritePath(root, settingsPath);
-  let settings: Record<string, unknown> = {};
-  if (existsSync(settingsPath)) {
-    const raw = readFileSync(settingsPath, 'utf-8');
-    try {
-      settings = JSON.parse(raw);
-    } catch (e) {
-      throw new Error(`Cannot parse ${settingsPath}: ${(e as Error).message}`);
-    }
-  }
-
-  if (!settings.hooks || typeof settings.hooks !== 'object') {
-    settings.hooks = {};
-  }
-  const hooks = settings.hooks as Record<string, unknown>;
-
-  // Strip lat-owned entries from ALL event types (cleans up stale events too)
-  for (const [event, entries] of Object.entries(hooks)) {
-    if (!Array.isArray(entries)) continue;
-    const filtered = entries.filter(
-      (entry: HookEntry) => !isLatHookEntry(entry),
-    );
-    if (filtered.length > 0) {
-      hooks[event] = filtered;
-    } else {
-      delete hooks[event];
-    }
-  }
-
-  // Add fresh hooks for current events
-  for (const event of ['UserPromptSubmit', 'Stop']) {
-    if (!Array.isArray(hooks[event])) {
-      hooks[event] = [];
-    }
-    (hooks[event] as unknown[]).push({
-      hooks: [
-        { type: 'command', command: latHookCommand(style, agent, event) },
-      ],
-    });
-  }
-
-  writeProjectFile(
-    root,
-    settingsPath,
-    JSON.stringify(settings, null, 2) + '\n',
-  );
-}
-
-function cursorHooksTemplate(style: LatCommandStyle): string {
-  return (
-    JSON.stringify(
-      {
-        version: 1,
-        hooks: {
-          stop: [{ command: latHookCommand(style, 'cursor', 'stop') }],
-        },
-      },
-      null,
-      2,
-    ) + '\n'
-  );
+  return style === 'global' ? { command: 'lat', args: ['mcp'] } : mcpCommand();
 }
 
 // ── Gitignore helper ─────────────────────────────────────────────────
@@ -523,6 +422,62 @@ function wrapWithMarkers(template: string): string {
   return `${MARKER_BEGIN}\n${template}${template.endsWith('\n') ? '' : '\n'}${MARKER_END}\n`;
 }
 
+/** Everything in a file except the generated marker section. */
+function withoutMarkerSection(content: string): string {
+  const beginIdx = content.indexOf(MARKER_BEGIN);
+  const endIdx = content.indexOf(MARKER_END);
+  if (beginIdx === -1 || endIdx === -1 || endIdx <= beginIdx) return content;
+  return content.slice(0, beginIdx) + content.slice(endIdx + MARKER_END.length);
+}
+
+/**
+ * Point CLAUDE.md at AGENTS.md instead of writing the generated section twice.
+ * Two files holding the same instructions drift as soon as one is edited, and
+ * `projectWritePath` resolves an in-project symlink, so a later `lat init`
+ * writing `CLAUDE.md` lands in `AGENTS.md` and stays idempotent.
+ *
+ * A `CLAUDE.md` carrying the user's own prose is left untouched: silently
+ * discarding hand-written instructions is worse than a duplicate.
+ */
+function linkClaudeInstructions(root: string): void {
+  const linkPath = join(root, 'CLAUDE.md');
+  const label = styleText('green', '  CLAUDE.md');
+  // Same guard every other managed path goes through: a symlink escaping the
+  // project, or a dangling one, is refused rather than written through.
+  projectWritePath(root, linkPath);
+  let info: Stats | undefined;
+  try {
+    info = lstatSync(linkPath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
+  }
+
+  if (info?.isSymbolicLink()) {
+    const target = readlinkSync(linkPath);
+    console.log(
+      target === 'AGENTS.md'
+        ? `${label} already links to AGENTS.md`
+        : styleText('yellow', '  CLAUDE.md') +
+            ` links to ${target}, not AGENTS.md — leaving it alone`,
+    );
+    return;
+  }
+
+  if (info) {
+    if (withoutMarkerSection(readFileSync(linkPath, 'utf-8')).trim()) {
+      console.log(
+        styleText('yellow', '  CLAUDE.md') +
+          ' has your own content — move it into AGENTS.md and replace CLAUDE.md with a symlink',
+      );
+      return;
+    }
+    rmSync(linkPath);
+  }
+
+  symlinkSync('AGENTS.md', linkPath);
+  console.log(`${label} → AGENTS.md`);
+}
+
 /**
  * Write a template into a marker-fenced section of a file, preserving
  * any user content outside the markers.
@@ -680,46 +635,11 @@ async function setupAgentsMd(
 async function setupClaudeCode(
   root: string,
   latDir: string,
-  template: string,
   hashes: Record<string, string>,
   ask: (message: string) => Promise<boolean>,
   style: LatCommandStyle,
 ): Promise<void> {
-  // CLAUDE.md — append-mode with markers (preserves user content)
-  const hash = await appendTemplateSection(
-    root,
-    latDir,
-    'CLAUDE.md',
-    template,
-    'CLAUDE.md',
-    '  ',
-    ask,
-  );
-  if (hash) hashes['CLAUDE.md'] = hash;
-
-  // Hooks — UserPromptSubmit (lat.md reminders + [[ref]] expansion) and Stop (update reminder)
-  console.log('');
-  console.log(
-    styleText(
-      'dim',
-      '  Hooks inject lat.md workflow reminders into every prompt and remind',
-    ),
-  );
-  console.log(
-    styleText(
-      'dim',
-      `  the agent to update ${basename(latDir)}/ before finishing.`,
-    ),
-  );
-
-  const claudeDir = projectWritePath(root, join(root, '.claude'));
-  const settingsPath = join(claudeDir, 'settings.json');
-
-  mkdirSync(claudeDir, { recursive: true });
-  syncLatHooks(settingsPath, style, 'claude', root);
-  console.log(
-    styleText('green', '  Hooks') + ' synced (UserPromptSubmit + Stop)',
-  );
+  linkClaudeInstructions(root);
 
   // .claude/skills/lat-md/SKILL.md — skill for authoring lat.md files
   console.log('');
@@ -794,33 +714,6 @@ async function setupCursor(
     ask,
   );
   if (hash) hashes['.cursor/rules/lat.md'] = hash;
-
-  // .cursor/hooks.json
-  console.log('');
-  console.log(
-    styleText(
-      'dim',
-      `  Cursor hooks can enforce the ${basename(latDir)}/ stop check, while prompt guidance`,
-    ),
-  );
-  console.log(
-    styleText(
-      'dim',
-      '  stays in rules + MCP because Cursor cannot reliably inject prompt-specific context.',
-    ),
-  );
-
-  const hooksHash = await writeTemplateFile(
-    root,
-    latDir,
-    '.cursor/hooks.json',
-    cursorHooksTemplate(style),
-    null,
-    'Hooks (.cursor/hooks.json)',
-    '  ',
-    ask,
-  );
-  if (hooksHash) hashes['.cursor/hooks.json'] = hooksHash;
 
   // .cursor/mcp.json
   console.log('');
@@ -1035,29 +928,6 @@ async function setupCodex(
   // AGENTS.md — Codex reads this natively
   // (already created in the shared step if any non-Claude agent is selected)
 
-  // Hooks — UserPromptSubmit (lat.md reminders + [[ref]] expansion) and Stop (update reminder)
-  console.log('');
-  console.log(
-    styleText(
-      'dim',
-      '  Hooks inject lat.md workflow reminders into every prompt and remind',
-    ),
-  );
-  console.log(
-    styleText(
-      'dim',
-      `  the agent to update ${basename(latDir)}/ before finishing.`,
-    ),
-  );
-
-  const codexDir = projectWritePath(root, join(root, '.codex'));
-  const hooksPath = join(codexDir, 'hooks.json');
-  mkdirSync(codexDir, { recursive: true });
-  syncLatHooks(hooksPath, style, 'codex', root);
-  console.log(
-    styleText('green', '  Hooks') + ' synced (UserPromptSubmit + Stop)',
-  );
-
   // .codex/config.toml — MCP server registration
   console.log('');
   console.log(
@@ -1110,12 +980,6 @@ async function setupCodex(
     ask,
   );
   if (skillHash) hashes['.codex/skills/lat-md/SKILL.md'] = skillHash;
-
-  console.log('');
-  console.log(
-    styleText('yellow', '  Note:') +
-      ' Run /hooks in Codex to review and trust the project hooks.',
-  );
 }
 
 // ── Embedding setup ─────────────────────────────────────────────────
@@ -1662,7 +1526,6 @@ export async function initCmd(
       const styleOptions: SelectOption[] = [
         { label: 'lat', value: 'global' },
         { label: localBin, value: 'local' },
-        { label: 'npx lat.md@latest', value: 'npx' },
       ];
       const styleChoice = await selectMenu(
         styleOptions,
@@ -1704,25 +1567,15 @@ export async function initCmd(
     const template = readAgentsTemplate(basename(latDir));
     const fileHashes: Record<string, string> = {};
 
-    // Step 5: AGENTS.md (shared by non-Claude agents)
-    const needsAgentsMd =
-      usePi || useCursor || useCopilot || useOpenCode || useCodex;
-    if (needsAgentsMd) {
-      await setupAgentsMd(root, latDir, template, fileHashes, ask);
-    }
+    // Step 5: AGENTS.md — the single instruction file every agent reads.
+    // Claude Code included, because its CLAUDE.md is a symlink to this.
+    await setupAgentsMd(root, latDir, template, fileHashes, ask);
 
     // Step 6: Per-agent setup
     if (useClaudeCode) {
       console.log('');
       console.log(styleText('bold', 'Setting up Claude Code...'));
-      await setupClaudeCode(
-        root,
-        latDir,
-        template,
-        fileHashes,
-        ask,
-        commandStyle,
-      );
+      await setupClaudeCode(root, latDir, fileHashes, ask, commandStyle);
     }
 
     if (usePi) {

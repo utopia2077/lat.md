@@ -724,7 +724,7 @@ export async function checkAllCommand(
         s.yellow('Warning:') +
           ' No init version recorded — run ' +
           s.cyan('lat init') +
-          ' to set up agent hooks and configuration.',
+          ' to set up agent configuration.',
       );
     } else if (storedVersion < INIT_VERSION) {
       if (lines.length > 0) lines.push('');
@@ -736,7 +736,7 @@ export async function checkAllCommand(
           INIT_VERSION +
           '). Re-run ' +
           s.cyan('lat init') +
-          ' to update agent hooks and configuration.',
+          ' to update agent configuration.',
       );
     }
   }

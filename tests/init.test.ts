@@ -9,6 +9,7 @@ import {
   writeFileSync,
   symlinkSync,
   readdirSync,
+  readlinkSync,
   lstatSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -243,6 +244,11 @@ describe('lat init embedding setup', () => {
   }
 
   beforeEach(() => {
+    // `runInit` spawns the CLI, which reads the endpoint from the environment.
+    // A developer with one configured would otherwise resolve a different
+    // provider than these tests assume.
+    delete process.env.LAT_LLM_BASE_URL;
+    delete process.env.LAT_LLM_MODEL;
     root = mkdtempSync(join(tmpdir(), 'lat-init-'));
     stdinIsTTY = Object.getOwnPropertyDescriptor(process.stdin, 'isTTY');
     setInteractive(false);
@@ -334,7 +340,8 @@ describe('lat init embedding setup', () => {
     expect(readFileSync(join(latDir(), '.gitignore'), 'utf8')).toContain(
       'config.local.yaml',
     );
-    expect(existsSync(join(root, '.codex', 'hooks.json'))).toBe(true);
+    expect(existsSync(join(root, '.codex', 'config.toml'))).toBe(true);
+    expect(existsSync(join(root, '.codex', 'hooks.json'))).toBe(false);
 
     await initCmd(root);
 
@@ -400,13 +407,10 @@ describe('lat init embedding setup', () => {
     'CLAUDE.md',
     '.github/copilot-instructions.md',
     '.cursor/rules/lat.md',
-    '.cursor/hooks.json',
     '.mcp.json',
     '.cursor/mcp.json',
     '.vscode/mcp.json',
     '.codex/config.toml',
-    '.claude/settings.json',
-    '.codex/hooks.json',
     '.pi/extensions/lat.ts',
     '.opencode/plugins/lat.ts',
     '.agents/skills/lat-md/SKILL.md',
@@ -497,6 +501,91 @@ describe('lat init embedding setup', () => {
     expect(lstatSync(join(root, 'AGENTS.md')).isSymbolicLink()).toBe(true);
     expect(readFileSync(target, 'utf8')).toContain('Keep this text.');
     expect(readFileSync(target, 'utf8')).toContain('%% lat:begin %%');
+  });
+
+  // @lat: [[tests/init#Claude Code reads AGENTS.md#Links CLAUDE.md instead of duplicating the section]]
+  it('links CLAUDE.md to AGENTS.md rather than writing a second copy', async () => {
+    createLatDir();
+    setInteractive(true);
+    vi.mocked(checklistMenu).mockResolvedValue(['claude']);
+    selectMenu.mockResolvedValue('global');
+
+    await initCmd(root);
+
+    const claude = join(root, 'CLAUDE.md');
+    expect(lstatSync(claude).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(claude)).toBe('AGENTS.md');
+    // Claude Code is not a special case: AGENTS.md is written even when it is
+    // the only agent selected, because that is the file the link resolves to.
+    const agents = readFileSync(join(root, 'AGENTS.md'), 'utf8');
+    expect(agents).toContain('%% lat:begin %%');
+    expect(readFileSync(claude, 'utf8')).toBe(agents);
+
+    // Re-running must not append a second section through the link.
+    await initCmd(root);
+    expect(readFileSync(join(root, 'AGENTS.md'), 'utf8')).toBe(agents);
+  });
+
+  // @lat: [[tests/init#Claude Code reads AGENTS.md#Installs no hooks for any agent]]
+  it('installs no hooks for any selected agent', async () => {
+    createLatDir();
+    setInteractive(true);
+    vi.mocked(checklistMenu).mockResolvedValue(['claude', 'pi', 'codex']);
+    selectMenu.mockResolvedValue('global');
+
+    await initCmd(root);
+
+    expect(readlinkSync(join(root, 'CLAUDE.md'))).toBe('AGENTS.md');
+    for (const path of [
+      '.claude/settings.json',
+      '.codex/hooks.json',
+      '.cursor/hooks.json',
+    ])
+      expect(existsSync(join(root, path)), path).toBe(false);
+    // The Pi extension registers tools only; prompt guidance comes from
+    // AGENTS.md rather than an injected reminder.
+    expect(
+      readFileSync(join(root, '.pi/extensions/lat.ts'), 'utf8'),
+    ).not.toContain('pi.on(');
+    // Dropping hooks must not drop tool access.
+    expect(readFileSync(join(root, '.mcp.json'), 'utf8')).toContain('"lat"');
+    expect(readFileSync(join(root, '.codex/config.toml'), 'utf8')).toContain(
+      'lat',
+    );
+  });
+
+  // @lat: [[tests/init#Claude Code reads AGENTS.md#Keeps a hand-written CLAUDE.md]]
+  it('leaves a CLAUDE.md carrying the user own instructions alone', async () => {
+    createLatDir();
+    setInteractive(true);
+    vi.mocked(checklistMenu).mockResolvedValue(['claude']);
+    selectMenu.mockResolvedValue('global');
+    const claude = join(root, 'CLAUDE.md');
+    const original = '# House rules\n\nAlways write tests first.\n';
+    writeFileSync(claude, original);
+
+    await initCmd(root);
+
+    expect(lstatSync(claude).isSymbolicLink()).toBe(false);
+    expect(readFileSync(claude, 'utf8')).toBe(original);
+  });
+
+  // @lat: [[tests/init#Claude Code reads AGENTS.md#Replaces a lat-only CLAUDE.md]]
+  it('replaces a CLAUDE.md holding nothing but the generated section', async () => {
+    createLatDir();
+    setInteractive(true);
+    vi.mocked(checklistMenu).mockResolvedValue(['claude']);
+    selectMenu.mockResolvedValue('global');
+    const claude = join(root, 'CLAUDE.md');
+    writeFileSync(
+      claude,
+      '%% lat:begin %%\n# Generated by an older init\n%% lat:end %%\n',
+    );
+
+    await initCmd(root);
+
+    expect(lstatSync(claude).isSymbolicLink()).toBe(true);
+    expect(readlinkSync(claude)).toBe('AGENTS.md');
   });
 
   // @lat: [[init#Embedding setup#Fresh init pins local embeddings]]

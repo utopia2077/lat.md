@@ -185,9 +185,9 @@ Steps:
 1. **Vault directory** — the name comes from `--vault`, else the config file, else `lat.md`. If not present, asks whether to create it (via a one-off readline interface that is closed before step 2) and scaffolds from `templates/init/` (`.gitignore` and the index file, whose name follows the vault). If it already exists, skips ahead and reports whether its index file is in place.
 2. **Embedding setup** — fresh and outdated setups default to a per-repository local preference before agent selection, unless the repo already has a _working_ hosted setup (a hosted `meta.embedding_model` plus a resolvable key for the same provider and model). That exception matters because the outdated check re-fires on every `INIT_VERSION` bump, so pinning local unconditionally would keep undoing a deliberate hosted choice; a hosted index with no compatible key is unusable, so it does fall back to local. In a TTY, if a key resolves from `LAT_LLM_KEY`, `LAT_LLM_KEY_FILE`, `LAT_LLM_KEY_HELPER`, or user config, init asks whether to stay local or use hosted embeddings; fresh repos default local, while re-runs default to their existing backend. When that choice differs from `meta.embedding_model`, including a change between hosted providers, interactive init offers to reindex immediately. Non-interactive init never chooses: it applies the local default only where no working hosted setup exists, and prints the required command for any mismatch.
 3. **Agent selection** — interactive checklist menu ([[src/cli/checklist-menu.ts#checklistMenu]]). All agents are shown at once with `[x]`/`[ ]` checkboxes; the cursor row is highlighted with `chalk.bgCyan`. Keys: up/down (j/k) to move, Space to toggle, Enter to confirm, Ctrl+C to abort. Returns an array of selected agent values. Non-TTY fallback returns `[]`. After confirmation, prints a summary line (e.g. "Selected: Claude Code, Cursor" or dim "None"). **Important:** the persistent readline interface is created _after_ this step — `checklistMenu` puts stdin into raw mode with its own `data` listener, which corrupts any co-existing readline interface.
-4. **Command style** — if any agent is selected, a `selectMenu` asks "How should agents run lat?" with three options: `lat` (global install, portable), the resolved local invocation, or `npx lat.md@latest` (slow but zero-install). Local JavaScript builds retain the exact Node executable that launched init, and TypeScript entry points also retain their loader flags; wrapper scripts and standalone binaries remain direct commands. The choice determines hook commands and structured executable/argument descriptors for MCP and generated tools. Non-interactive mode defaults to `local`. Global and npx commands are portable on Unix; Windows generated tools use explicit Node entry points to avoid shell wrappers.
-5. **AGENTS.md** — created if a non-Claude agent is selected (Cursor, Copilot, Codex). Shared instruction file. Uses marker-based append mode (see below).
-6. **Per-agent setup** — configures each selected agent (see subsections below). Each step prints a brief explanation of _why_ it's needed (e.g. why a hook is used instead of CLAUDE.md, why MCP is registered alongside CLI access).
+4. **Command style** — if any agent is selected, a `selectMenu` asks "How should agents run lat?" with two options: `lat` (global install, portable) or the resolved local invocation. `npx lat.md@latest` is deliberately not offered, because it resolves the published upstream package and would silently replace this build with one that lacks its configuration support. Local JavaScript builds retain the exact Node executable that launched init, and TypeScript entry points also retain their loader flags; wrapper scripts and standalone binaries remain direct commands. The choice determines the structured executable/argument descriptors for MCP and generated tools. Non-interactive mode defaults to `local`. Windows generated tools use explicit Node entry points to avoid shell wrappers.
+5. **AGENTS.md** — the single instruction file, created whenever any agent is selected, Claude Code included, because its `CLAUDE.md` is a symlink to this. Uses marker-based append mode (see below).
+6. **Per-agent setup** — configures each selected agent (see subsections below). Each step prints a brief explanation of _why_ it's needed (e.g. why MCP is registered alongside CLI access).
 7. **Version stamp + file hashes** — writes `INIT_VERSION` and SHA-256 hashes of all template-generated files to `<vault>/.cache/lat_init.json`. The version is also stamped when no agents are selected, because embedding setup has completed and must not be treated as fresh on the next run. On re-run, compares current file content against stored hashes: unmodified files are silently updated to the latest template; user-modified files trigger a Y/n prompt offering to overwrite with the latest template, declining suggests [[cli#gen]].
 8. **Next steps** — after all setup completes, prints agent-specific guidance for having the agent document the codebase. For Claude Code, shows a runnable `claude "..."` command. For IDE agents (Cursor, Copilot, Pi, OpenCode, Codex), shows the prompt to paste into agent chat. Both suggest running `lat check` when done.
 
@@ -203,41 +203,39 @@ At the very start, before any steps, init prints the ASCII `lat.md` logo (cyan, 
 
 ### Claude Code
 
-Sets up `CLAUDE.md` and two agent hooks for the Claude Code coding agent.
+Sets up a `CLAUDE.md` symlink, the skill, and the MCP server for the Claude Code coding agent. No hooks are installed.
 
-- `CLAUDE.md` — written using marker-based append mode (see below), preserving any user content outside the `%% lat:begin %%` / `%% lat:end %%` markers
-- Hooks synced in `.claude/settings.json` — on every run, all existing lat-owned hook entries are removed, then fresh entries are added for both events. Detection uses three heuristics: `/\blat\b/` in the command string, `hook claude ` substring (catches any install path), or command starting with the current binary path. Non-lat hooks are preserved. Both hooks call [[cli#hook]]:
-  - `UserPromptSubmit` → `lat hook claude UserPromptSubmit` — injects lat.md workflow reminders, auto-resolves `[[refs]]` in the prompt
-  - `Stop` → `lat hook claude Stop` — reminds the agent to update `lat.md/` before finishing
+- `CLAUDE.md` — a symlink to `AGENTS.md`, never a second copy. Two files holding the same generated section drift as soon as one is edited, and [[packages/core/src/project-write.ts#projectWritePath]] resolves an in-project symlink, so a later `lat init` writing `CLAUDE.md` lands in `AGENTS.md` and stays idempotent. A `CLAUDE.md` carrying the user's own prose is left untouched, with a note to move it into `AGENTS.md`; one holding nothing but the generated marker section is replaced by the symlink.
 - `.claude/skills/lat-md/SKILL.md` — skill spec generated from `templates/skill/SKILL.md`. Teaches the agent how to author and maintain `lat.md/` files. Claude Code discovers it automatically from `.claude/skills/`.
-- `.claude` directory added to `.gitignore` (settings contain local absolute paths in hook commands)
+- `.claude` directory added to `.gitignore` (MCP config can contain local absolute paths)
 - [[cli#mcp]] server registered in `.mcp.json` at the project root (added to `.gitignore` since it contains absolute paths)
 
 ### Initialization write boundaries
 
 Setup validates project destinations before reading or writing them, rejecting escaping or dangling symlinks in files and ancestor directories.
 
-The shared [[packages/core/src/project-write.ts]] guard covers generated instructions, skills, plugins, hooks, MCP settings, ignore files, local preferences, and init metadata. Writes replace validated files atomically and preserve existing in-project symlinks and user-edit prompts. This protects against repository-planted paths; it does not promise isolation from a same-user process racing filesystem changes.
+The shared [[packages/core/src/project-write.ts]] guard covers generated instructions, skills, plugins, MCP settings, ignore files, local preferences, and init metadata. Writes replace validated files atomically and preserve existing in-project symlinks and user-edit prompts. This protects against repository-planted paths; it does not promise isolation from a same-user process racing filesystem changes.
+
+The `CLAUDE.md` symlink is validated through the same guard before it is inspected, so a symlink escaping the project or a dangling one is refused rather than followed.
 
 ### Pi
 
-Sets up a Pi extension that registers lat tools as native Pi tools and hooks into the agent lifecycle.
+Sets up a Pi extension that registers lat tools as native Pi tools. It installs no lifecycle hooks.
 
 - `AGENTS.md` — shared instruction file (created in the shared step)
-- `.pi/extensions/lat.ts` — TypeScript extension generated from `templates/pi-extension.ts` with an executable and prefix argument array injected. `resolveLatInvocation()` in `init.ts` runs local `.js` builds through their Node executable, captures `node <execArgv> <script>` for `.ts` source files run via tsx, and invokes executable wrappers or standalone binaries directly. Registers six tools (`lat_search`, `lat_section`, `lat_locate`, `lat_check`, `lat_expand`, `lat_refs`) that invoke the CLI without a shell, preserving queries as literal arguments. Each tool provides a `renderCall` method so the Pi TUI displays the query/parameters inline in the tool call header (e.g. `lat search "query text"`). The `lat_search` and `lat_section` tools also provide a `renderResult` method that shows a collapsed preview (first 4 lines) by default and renders the full output as styled markdown (via pi's `Markdown` component and `getMarkdownTheme()`) when expanded via Ctrl+O (`expandTools` keybinding). Registers custom message renderers for `lat-reminder` and `lat-check` that show a collapsed one-liner by default and expand to full markdown-rendered content on Ctrl+O. Hooks into `before_agent_start` (injects a visible search reminder via `customType` message with `display: true`) and `agent_end` (runs `lat check` + diff analysis, sends a visible follow-up message if something needs fixing).
+- `.pi/extensions/lat.ts` — TypeScript extension generated from `templates/pi-extension.ts` with an executable and prefix argument array injected. `resolveLatInvocation()` in `init.ts` runs local `.js` builds through their Node executable, captures `node <execArgv> <script>` for `.ts` source files run via tsx, and invokes executable wrappers or standalone binaries directly. Registers six tools (`lat_search`, `lat_section`, `lat_locate`, `lat_check`, `lat_expand`, `lat_refs`) that invoke the CLI without a shell, preserving queries as literal arguments. Each tool provides a `renderCall` method so the Pi TUI displays the query/parameters inline in the tool call header (e.g. `lat search "query text"`). The `lat_search` and `lat_section` tools also provide a `renderResult` method that shows a collapsed preview (first 4 lines) by default and renders the full output as styled markdown (via pi's `Markdown` component and `getMarkdownTheme()`) when expanded via Ctrl+O (`expandTools` keybinding). The extension registers tools only: it installs no `pi.on` lifecycle handlers, so prompt-time guidance comes from [[cli#init|AGENTS.md]] rather than an injected reminder.
 - `.pi/skills/lat-md/SKILL.md` — skill spec generated from `templates/skill/SKILL.md`. Teaches the agent how to author and maintain `lat.md/` files (section structure, wiki links, code refs, test specs). Pi discovers it automatically from the `.pi/skills/` directory.
 - `.pi` directory added to `.gitignore` (extension and skills contain local paths)
 
 ### Cursor
 
-Sets up `.cursor/rules`, a Cursor stop hook, and the MCP server for Cursor.
+Sets up `.cursor/rules` and the MCP server for Cursor. No hooks are installed.
 
 - `.cursor/rules/lat.md` — rules file generated from `templates/cursor-rules.md`, references MCP tools instead of CLI commands
-- `.cursor/hooks.json` — generated stop hook config (`version: 1`) that runs `lat hook cursor stop`. It enforces the end-of-task `lat check` and `lat.md/` sync reminder in Cursor's native hook format.
 - [[cli#mcp]] server registered in `.cursor/mcp.json`
 - `.agents/skills/lat-md/SKILL.md` — skill spec for authoring `lat.md/` files, placed in the cross-agent standard skills directory
 
-The `.cursor` directory is added to `.gitignore` because its hooks and MCP config may contain local paths. Cursor still relies on rules plus MCP for prompt-time search guidance because its hooks do not reliably inject prompt-specific context the way Claude/Pi integrations do.
+The `.cursor` directory is added to `.gitignore` because its MCP config may contain local paths. Cursor relies on rules plus MCP for prompt-time search guidance.
 
 ### VS Code Copilot
 
@@ -258,12 +256,11 @@ Sets up an OpenCode plugin that registers lat tools as native OpenCode tools and
 
 ### Codex
 
-Sets up AGENTS.md, lifecycle hooks, the MCP server, and skills for the Codex CLI agent.
+Sets up AGENTS.md, the MCP server, and skills for the Codex CLI agent. No hooks are installed.
 
 - `AGENTS.md` — shared instruction file (created in the shared step)
-- `.codex/hooks.json` — merges lat-owned `UserPromptSubmit` and `Stop` command hooks while preserving unrelated hooks. The prompt hook injects reminders, expands `[[refs]]`, and supplies indexed lat.md context; the stop hook runs validation and continues the turn when documentation needs work. Codex requires users to review and trust project hooks through `/hooks` before they run.
 - [[cli#mcp]] server registered in `.codex/config.toml` as a `[mcp_servers.lat]` TOML table
-- `.codex` directory added to `.gitignore` (hooks and config can contain local absolute paths)
+- `.codex` directory added to `.gitignore` (config can contain local absolute paths)
 - `.agents/skills/lat-md/SKILL.md` — skill spec for authoring `lat.md/` files, placed in the cross-agent standard skills directory
 - `.codex/skills/lat-md/SKILL.md` — same skill spec in Codex's native skills directory
 
@@ -285,7 +282,7 @@ Generated Markdown instructions obey Lat's local validation rules, so symlinked 
 
 Shared files use `appendTemplateSection` to preserve user content outside lat's managed section.
 
-Template content is wrapped in visible `%% lat:begin %%` / `%% lat:end %%` markers. Applies to CLAUDE.md, AGENTS.md, and `.github/copilot-instructions.md`. On re-run: if markers exist and the section matches, it's skipped ("already up to date"); if the section matches the stored hash (unmodified by user), it's replaced in-place; if the user edited the section, init asks before replacing. If the file exists but has no markers (old full-overwrite init), and the full-file hash matches the stored hash, the existing content is migrated to marker format in-place. If the file has user content and no markers, the section is appended to the end. All other agent files (rules, skills, hooks, extensions, plugins) still use full-file `writeTemplateFile` since lat owns those entirely.
+Template content is wrapped in visible `%% lat:begin %%` / `%% lat:end %%` markers. Applies to AGENTS.md and `.github/copilot-instructions.md`. On re-run: if markers exist and the section matches, it's skipped ("already up to date"); if the section matches the stored hash (unmodified by user), it's replaced in-place; if the user edited the section, init asks before replacing. If the file exists but has no markers (old full-overwrite init), and the full-file hash matches the stored hash, the existing content is migrated to marker format in-place. If the file has user content and no markers, the section is appended to the end. All other agent files (rules, skills, extensions, plugins) still use full-file `writeTemplateFile` since lat owns those entirely.
 
 Implementation: [[src/cli/init.ts]], checklist menu in [[src/cli/checklist-menu.ts]], single-select menu in [[packages/core/src/cli/select-menu.ts]], version tracking in [[packages/core/src/init-version.ts]]
 
@@ -322,7 +319,7 @@ Implementation: [[packages/core/src/config.ts]]
 
 ## hook
 
-Handle agent hook events. Called by agent hooks configured during `lat init`, not directly by users.
+Handle agent hook events. `lat init` installs no hooks, so this runs only where a user wired one up themselves; it is not normally invoked directly.
 
 Usage: `lat hook <agent> <event>`
 

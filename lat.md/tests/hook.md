@@ -61,14 +61,6 @@ When Codex needs more work at stop time, the hook returns the same guarded `deci
 
 The Codex `UserPromptSubmit` adapter reads `prompt`, expands wiki links, and returns the resolved prompt as additional developer context.
 
-## Codex hook setup preserves non-lat hooks
-
-Syncing `.codex/hooks.json` removes stale lat-owned entries, installs current prompt and stop commands, and preserves unrelated hook metadata and event handlers.
-
-## Local JavaScript hook commands retain Node
-
-When init runs from a local compiled JavaScript entry point, generated hook commands invoke it through the same Node executable so non-executable `tsc` output works without changing file permissions.
-
 ## Counts tracked and untracked files together
 
 Diff analysis combines tracked churn with relevant untracked `lat.md/` and supported source files while respecting nested `.gitignore` rules and safely skipping unrelated paths.
