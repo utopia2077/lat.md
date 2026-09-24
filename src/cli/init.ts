@@ -971,18 +971,18 @@ async function setupOpenCode(
   // AGENTS.md — OpenCode reads this natively
   // (already created in the shared step, which runs for any selected agent)
 
-  // .opencode/plugins/lat.ts — plugin that registers tools + lifecycle hooks
+  // .opencode/plugins/lat.ts — plugin that registers lat tools
   console.log('');
   console.log(
     styleText(
       'dim',
-      '  The OpenCode plugin registers lat tools and hooks into the session',
+      '  The OpenCode plugin registers lat tools so the agent can search,',
     ),
   );
   console.log(
     styleText(
       'dim',
-      `  lifecycle to validate ${basename(latDir)}/ when the agent finishes.`,
+      `  read, and validate ${basename(latDir)}/ from the OpenCode tool loop.`,
     ),
   );
 

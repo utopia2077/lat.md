@@ -530,7 +530,12 @@ describe('lat init embedding setup', () => {
   it('installs no hooks for any selected agent', async () => {
     createLatDir();
     setInteractive(true);
-    vi.mocked(checklistMenu).mockResolvedValue(['claude', 'pi', 'codex']);
+    vi.mocked(checklistMenu).mockResolvedValue([
+      'claude',
+      'pi',
+      'codex',
+      'opencode',
+    ]);
     selectMenu.mockResolvedValue('global');
 
     await initCmd(root);
@@ -549,6 +554,14 @@ describe('lat init embedding setup', () => {
     expect(pi).not.toContain('pi.on(');
     expect(pi).not.toContain('registerMessageRenderer');
     expect(pi).toContain('pi.registerTool');
+    // Same for OpenCode: tools, no session lifecycle handler.
+    const opencode = readFileSync(
+      join(root, '.opencode/plugins/lat.ts'),
+      'utf8',
+    );
+    expect(opencode).not.toContain('hooks:');
+    expect(opencode).not.toContain('session.idle');
+    expect(opencode).toContain('lat_search: tool(');
     // Dropping hooks must not drop tool access.
     expect(readFileSync(join(root, '.mcp.json'), 'utf8')).toContain('"lat"');
     expect(readFileSync(join(root, '.codex/config.toml'), 'utf8')).toContain(
